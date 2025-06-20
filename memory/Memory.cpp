@@ -12,6 +12,25 @@ long BaseAddress = 0;
 // Memory read/write function templates implementation
 template<typename T>
 T ReadMemory(pid_t pid, long address)
+// {
+//     T buffer;
+//     struct iovec local[1];
+//     struct iovec remote[1];
+//
+//     local[0].iov_base = &buffer;
+//     local[0].iov_len = sizeof(T);
+//     remote[0].iov_base = (void*)address;
+//     remote[0].iov_len = sizeof(T);
+//
+//     ssize_t nread = process_vm_readv(pid, local, 1, remote, 1, 0);
+//     if (nread != sizeof(T))
+//     {
+//         // Silent failure - don't spam console
+//         memset(&buffer, 0, sizeof(T));
+//     }
+//
+//     return buffer;
+// }
 {
     T buffer;
     struct iovec local[1];
@@ -25,7 +44,10 @@ T ReadMemory(pid_t pid, long address)
     ssize_t nread = process_vm_readv(pid, local, 1, remote, 1, 0);
     if (nread != sizeof(T))
     {
-        // Silent failure - don't spam console
+        std::cerr << "[ReadMemory] Failed to read " << sizeof(T)
+                  << " bytes at address 0x" << std::hex << address
+                  << " (pid " << pid << "). nread=" << nread << std::endl;
+        perror("[ReadMemory] process_vm_readv");
         memset(&buffer, 0, sizeof(T));
     }
 

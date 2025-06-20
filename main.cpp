@@ -32,11 +32,13 @@ int main() {
     std::cout << "UWorld Address: " << world  << std::endl;
 
 
-    //Defining the overlay
-    Overlay ov = Overlay();
-    ov.initialize("Sea of Thieves");
-    ov.update(); ov.clearBackBuffer();
-    GlobalCheatData.ov = ov; //Give overlay to global data
+    // //Defining the overlay
+    // Overlay ov = Overlay();
+    // ov.initialize("Sea of Thieves");
+    // ov.update(); ov.clearBackBuffer();
+    // GlobalCheatData.ov = ov; //Give overlay to global data
+
+    return 1;
 
     uintptr_t UWorld, PlayerController, GameInstance, GameState, LocalPlayer, PlayerStateArray;
     int loopCount = 0; // Used for reading some things more rarly
