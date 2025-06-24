@@ -9,28 +9,32 @@
 pid_t ProcessId = 0;
 long BaseAddress = 0;
 
+#define debug true
+
 // Memory read/write function templates implementation
 template<typename T>
 T ReadMemory(pid_t pid, long address)
-// {
-//     T buffer;
-//     struct iovec local[1];
-//     struct iovec remote[1];
-//
-//     local[0].iov_base = &buffer;
-//     local[0].iov_len = sizeof(T);
-//     remote[0].iov_base = (void*)address;
-//     remote[0].iov_len = sizeof(T);
-//
-//     ssize_t nread = process_vm_readv(pid, local, 1, remote, 1, 0);
-//     if (nread != sizeof(T))
-//     {
-//         // Silent failure - don't spam console
-//         memset(&buffer, 0, sizeof(T));
-//     }
-//
-//     return buffer;
-// }
+#if !debug
+{
+    T buffer;
+    struct iovec local[1];
+    struct iovec remote[1];
+
+    local[0].iov_base = &buffer;
+    local[0].iov_len = sizeof(T);
+    remote[0].iov_base = (void*)address;
+    remote[0].iov_len = sizeof(T);
+
+    ssize_t nread = process_vm_readv(pid, local, 1, remote, 1, 0);
+    if (nread != sizeof(T))
+    {
+        // Silent failure - don't spam console
+        memset(&buffer, 0, sizeof(T));
+    }
+
+    return buffer;
+}
+#else
 {
     T buffer;
     struct iovec local[1];
@@ -53,12 +57,42 @@ T ReadMemory(pid_t pid, long address)
 
     return buffer;
 }
+#endif
 
 // Implementation for GameData.h template
 template<typename T>
 T ReadMemory(uintptr_t address)
 {
     return ReadMemory<T>(ProcessId, address);
+}
+
+void ReadMemoryBuffer(pid_t pid, long address, void* buffer, size_t size)
+{
+    struct iovec local[1];
+    struct iovec remote[1];
+
+    local[0].iov_base = buffer;
+    local[0].iov_len = size;
+    remote[0].iov_base = (void*)address;
+    remote[0].iov_len = size;
+
+    ssize_t nread = process_vm_readv(pid, local, 1, remote, 1, 0);
+    if (nread != (ssize_t)size)
+    {
+        // If the read fails, zero out the buffer to prevent using old/garbage data.
+        memset(buffer, 0, size);
+#if debug
+        std::cerr << "[ReadMemory (Buffer)] Failed to read " << size
+                  << " bytes at address 0x" << std::hex << address
+                  << " (pid " << pid << "). nread=" << nread << std::endl;
+        perror("[ReadMemory (Buffer)] process_vm_readv");
+#endif
+    }
+}
+
+void ReadMemoryBuffer(uintptr_t address, void* buffer, size_t size)
+{
+    ReadMemoryBuffer(ProcessId, address, buffer, size);
 }
 
 template<typename T>
@@ -149,3 +183,10 @@ template long ReadMemory<long>(uintptr_t address);
 template float ReadMemory<float>(uintptr_t address);
 template double ReadMemory<double>(uintptr_t address);
 template uintptr_t ReadMemory<uintptr_t>(uintptr_t address);
+
+//For reading player list or bone list and stuff
+template TArray<uintptr_t> ReadMemory<TArray<uintptr_t>>(uintptr_t address);
+//For Camera Stuff
+template FCameraCacheEntry ReadMemory<FCameraCacheEntry>(uintptr_t address);
+//For player location
+template FVector ReadMemory<FVector>(uintptr_t address);
