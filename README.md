@@ -37,3 +37,17 @@ libcairo2-dev \
 pkg-config \
 cmake \
 g++
+
+# Building
+cmake .
+
+make -j14
+
+#Running
+sudo su
+./danSOT
+
+(in a different terminal)
+./OverlayApp
+(or if you need to select the monitor its on, type in number, range starts at 0, just do trial and error to figure it out)
+./OverlayApp 1

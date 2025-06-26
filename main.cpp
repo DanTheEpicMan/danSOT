@@ -1,148 +1,149 @@
 //Extern Headers
 #include <iostream>
 #include <unistd.h>
+#include <csignal>
+#include <fcntl.h>
+#include <sys/mman.h>
 
 //Local Headers
 #include "utils/ProcessUtils.h"
 #include "memory/Memory.h"
-#include "overlay/Overlay.h"
 #include "utils/LocalStructs.h"
 #include "offsets.h"
 #include "utils/GameStructs.h"
+#include "overlay/drawing.h" //overlay/shared_data.h imported by this
+
 #define ptr uintptr_t //Makes it a little more readable
 
-CheatData GlobalCheatData; // Global cheat data structure
+//HARDCODED VALUES-CHANGE
+int MonWidth = 2560; // Width of the monitor, this does not controller the overlay size but is used for calculations
+int MonHeight = 1440; // Height of the monitor, this does not controller the overlay size but is used for calculations
+//END OF HARDCODED VALUES
 
+DrawingContext* ctx = nullptr;
+
+void cleanup_shm(int signum) {
+    std::cout << "\nCaught signal " << signum << ". Cleaning up..." << std::endl;
+    delete ctx;
+    ctx = nullptr;
+    exit(0);
+}
 
 
 int main() {
-    if (getuid() != 0) {std::cerr << "Must run as root (sudo)"; return 1;}
-
-    ProcessId = FindProcess("SotGame.exe");
-    if (ProcessId == 0) {std::cerr << "Game Not found. Name might need to be updated" << std::endl; return 1;}
-    std::cout << "Game is running, process id " << ProcessId << std::endl;
-
-    BaseAddress = FindBaseImage(ProcessId, "SotGame.exe");
-    if (BaseAddress == 0) {std::cerr << "Could not find game's base address." << std::endl; return 1;}
-    std::cout << "Found base address: 0x" << std::hex << BaseAddress << std::dec << std::endl;
-
-    //Main thread, intened for computing stuff once and passing it to the other threads
-
-    uintptr_t world = ReadMemory<uintptr_t>(BaseAddress + Offsets::UWorld); //Read the UWorld address
-    std::cout << "UWorld Address: " << std::hex << world  << std::dec << std::endl;
-
-    Overlay ov;
-
-    if (!ov.initialize()) {
-        std::cerr << "Fatal: Overlay initialization failed. See debug output for details." << std::endl;
+    if (getuid() != 0) {
+        std::cerr << "Must run as root (sudo)" << std::endl;
         return 1;
     }
 
+    signal(SIGINT, cleanup_shm);
+
+    try {
+        ctx = new DrawingContext();
+    } catch (const std::runtime_error& e) {
+        std::cerr << "Error initializing DrawingContext: " << e.what() << std::endl;
+        return 1;
+    }
+
+    ProcessId = FindProcess("SotGame.exe");
+    if (ProcessId == 0) {
+        std::cerr << "Game Not found. Name might need to be updated" << std::endl;
+        delete ctx;
+        return 1;
+    }
+    std::cout << "Game is running, process id " << ProcessId << std::endl;
+
+
+    BaseAddress = FindBaseImage(ProcessId, "SotGame.exe");
+    if (BaseAddress == 0) {
+        std::cerr << "Could not find game's base address." << std::endl;
+        delete ctx;
+        return 1;
+    }
+    std::cout << "Found base address: 0x" << std::hex << BaseAddress << std::dec << std::endl;
+
 
     uintptr_t UWorld, GNames, PlayerController, LPawn, GameInstance, Persistentlevel, GameState, LocalPlayers, LocalPlayer;
-    int loopCount = 0; // Used for reading some things more rarly
-    while (true) { loopCount++; // Main loop, loopCount increases every time
-        ov.clearBackBuffer();
-        //usleep(1000);
-        ov.drawText(5, 18, "danSOT", Overlay::WHITE, 16);
+    int loopCount = 0;
+    int x = 10;
+    while (true) {
+        loopCount++;
+        if (x > 1000) x = 10;
+        x++;
 
+        //std::cout << "Loop count: " << loopCount << std::endl; // Removed for performance
 
-        if (loopCount % 100 == 0) { //every 1000 loops
+        ctx->begin_frame();
+        ctx->draw_text(x, 10, "DanSOT", COLOR::WHITE);
+
+        if (loopCount % 100 == 0) {
             UWorld = ReadMemory<uintptr_t>(BaseAddress + Offsets::UWorld);
             GameState = ReadMemory<uintptr_t>(UWorld + Offsets::GameState);
             Persistentlevel = ReadMemory<uintptr_t>(UWorld + Offsets::PresistentLevel);
-
-            // std::cout << "UWorld: 0x" << std::hex << UWorld << std::dec << std::endl;
-            // std::cout << "GameState: 0x" << std::hex << GameState << std::dec << std::endl;
-
-            GameInstance = ReadMemory<uintptr_t>(UWorld + Offsets::OwnerGameInstance); //OwningGameInstance
-            LocalPlayers = ReadMemory<uintptr_t>(GameInstance + Offsets::LocalPlayers); //LocalPlayers
-            LocalPlayer = ReadMemory<uintptr_t>(LocalPlayers); //getting out of list
-            PlayerController = ReadMemory<uintptr_t>(LocalPlayer + Offsets::PlayerController); //PlayerController
-            LPawn = ReadMemory<uintptr_t>(PlayerController + Offsets::LocalPawn); //Pawn
-
-            // std::cout << "GameInstance: 0x" << std::hex << GameInstance << std::dec << std::endl;
-            // std::cout << "LocalPlayer: 0x" << std::hex << LocalPlayer << std::dec << std::endl;
-            // std::cout << "Localplayer: 0x" << std::hex << LocalPlayer << std::dec << std::endl;
-            // std::cout << "PlayerController: 0x" << std::hex << PlayerController << std::dec << std::endl;
-            // std::cout << "LPawn: 0x" << std::hex << LPawn << std::dec << std::endl;
-
-            GNames = ReadMemory<ptr>(BaseAddress + Offsets::GName); //GNames
+            GameInstance = ReadMemory<uintptr_t>(UWorld + Offsets::OwnerGameInstance);
+            LocalPlayers = ReadMemory<uintptr_t>(GameInstance + Offsets::LocalPlayers);
+            LocalPlayer = ReadMemory<uintptr_t>(LocalPlayers);
+            PlayerController = ReadMemory<uintptr_t>(LocalPlayer + Offsets::PlayerController);
+            LPawn = ReadMemory<uintptr_t>(PlayerController + Offsets::LocalPawn);
+            GNames = ReadMemory<ptr>(BaseAddress + Offsets::GName);
         }
 
-        //Skip cheat stuff if in game
-        if (!LPawn) continue;
+        if (!LPawn) {
+            ctx->end_frame();
+            usleep(100000);
+            continue;
+        }
 
-        //----------- Local Player Stuff -----------------
-        //Getting health
-        uintptr_t HealthComp = ReadMemory<uintptr_t>(LPawn + Offsets::HealthComponent); //HealthComponent
-        float Health = ReadMemory<float>(HealthComp + Offsets::Health); //CurrentHealthInfo (0xd4 + 0x0)
-        std::cout << "Health: " << Health << std::endl << std::endl;
-
-        //uintptr_t RootComponent = ReadMemory<uintptr_t>(LPawn + Offsets::RootComponent);
-
-        ptr CameraManager = ReadMemory<ptr>(PlayerController + Offsets::PlayerCameraManager); //PlayerCameraManager
-        FCameraCacheEntry CameraCache = ReadMemory<FCameraCacheEntry>(CameraManager + Offsets::CameraCachePrivate); //CameraCache
-        //std::cout << "CameraCache test: " << CameraCache.POV.Location.x << std::endl;
-
-        //----------- Other Player(and objects) Stuff -----------------
+        ptr CameraManager = ReadMemory<ptr>(PlayerController + Offsets::PlayerCameraManager);
+        FCameraCacheEntry CameraCache = ReadMemory<FCameraCacheEntry>(CameraManager + Offsets::CameraCachePrivate);
         TArray<uintptr_t> PlayersTArray = ReadMemory<TArray<uintptr_t>>(Persistentlevel + Offsets::OwningActor);
         int playerCount = PlayersTArray.Length();
         uintptr_t PlayerStateArray = PlayersTArray.GetAddress();
 
         for (int i = 0; i < playerCount; i++) {
-            ptr PlayerPawn = ReadMemory<ptr>(PlayerStateArray + (i * sizeof(ptr))); //Get the player state
-            if (PlayerPawn == 0 || PlayerPawn == LPawn) continue; //If the player state is null or is self, skip it
+            Entity entity;
+            ptr PlayerPawn = ReadMemory<ptr>(PlayerStateArray + (i * sizeof(ptr)));
+            if (PlayerPawn == 0 || PlayerPawn == LPawn) continue;
 
-            auto actorID = ReadMemory<int>(PlayerPawn + Offsets::ActorID); //Get the actor ID (this is unique for each object)
-
-            auto Mesh = ReadMemory<uintptr_t>(PlayerPawn + Offsets::Mesh);
-
+            //------Finding Location------
             auto ActorRootComponent = ReadMemory<uintptr_t>(PlayerPawn + Offsets::RootComponent);
             if (ActorRootComponent == 0x0) continue;
+            entity.location = ReadMemory<FVector>(ActorRootComponent + Offsets::RelativeLocation);
+            if (entity.location.x == 0) continue;
 
-            //if (!Mesh) continue;
-
-            //Getting the name
+            //------Finding Name------
+            auto actorID = ReadMemory<int>(PlayerPawn + Offsets::ActorID);
             char name_text[68];
             {
                 const auto chunk_offset = (actorID / 0x4000) * 8;
                 const auto chunk_index_offset = (actorID % 0x4000) * 8;
-                const auto name_chunk = ReadMemory<ptr>(GNames + chunk_offset);//data->intel_read<uintptr_t>(Cache::GNames + chunk_offset);
-                const auto name_ptr = ReadMemory<ptr>(name_chunk + chunk_index_offset);//data->intel_read<uintptr_t>(name_chunk + chunk_index_offset);
-
+                const auto name_chunk = ReadMemory<ptr>(GNames + chunk_offset);
+                const auto name_ptr = ReadMemory<ptr>(name_chunk + chunk_index_offset);
                 ReadMemoryBuffer(name_ptr + 0xC, name_text, sizeof(name_text));
                 name_text[67] = '\0';
-
-                //std::cout << "Name: " << name_text << std::endl;
             }
+            entity.name = name_text;
 
-            FVector Location = ReadMemory<FVector>(ActorRootComponent + 0xF8); //RelativeLocation
-            if (Location.x == 0) continue; //If the location is null, skip it
-
-
-            //std::cout << "Location: " << std::hex << Location.x << " " << Location.y << " " << Location.z << std::dec << std::endl;
-            //std::cout << "CameraCache test: " << CameraCache.POV.Location.x << std::endl;
-
-            Coords screenLoc = WorldToScreen(Location, CameraCache.POV, ov.getWidth(), ov.getHeight());
-            //std::cout << "Screen Location: " << screenLoc.x << " " << screenLoc.y << std::endl << std::endl;
-            if (screenLoc.x == -1) continue;
-            ov.drawText(screenLoc.x, screenLoc.y, name_text, Overlay::WHITE, 10);
+            entity.
 
 
-            // Check if the actor is on screen before drawing
-            if (screenLoc.x != -1) {
 
-                // ===================================================================
-                // ====== THIS IS THE FILTERING LOGIC YOU NEED TO ADD ================
-                // ===================================================================
+            //
 
-                c
-            }
+            // Coords screenLoc = WorldToScreen(entity.location, CameraCache.POV, MonWidth, MonHeight);
+            //
+            // if (screenLoc.x == -1) continue;
+            //
+            // ctx->draw_text(screenLoc.x, screenLoc.y, name_text, COLOR::WHITE);
+
+            entity.invalid = false;
+
         }
-        ov.swapBuffers();
-        usleep(10);
+
+        ctx->end_frame();
+        //usleep(8000);
     }
 
-
+    delete ctx;
+    return 0;
 }

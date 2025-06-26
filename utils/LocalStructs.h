@@ -4,21 +4,23 @@
 #pragma once
 #include "GameStructs.h"
 
-typedef struct {
-    uintptr_t Pawn;
-    int actorID;
+enum EntTypes {
+    NETPROXYSHIP,
+    SHIP,
 
-    uintptr_t Mesh;
-    uintptr_t RootComponent;
-    char name[68];
-} Entity;
+    PLAYER,
+    MERMADE
+};
 
 typedef struct {
 
 } Player;
 
-typedef struct {
-
+typedef struct { //read everything from pawn
+    std::string displayName = "Ship";
+    double distance = 0;
+    FVector location;
+    float WaterAmount = 0; //0-1, 1 is full
 } Ship;
 
 typedef struct {
@@ -26,7 +28,38 @@ typedef struct {
 } Island;
 
 typedef struct {
-    Overlay ov; // Overlay instance for drawing
+    float health;
+
+    char name[68];
+    FVector location;
+
+    EntTypes type; //determins what type to use
+    union {
+        struct {
+            std::string displayName = "Far Ship";
+            int distance = 0; //distance from player
+        } netProxyShip;
+
+        Ship ship;
+
+        Player player;
+
+        struct {
+            std::string displayName = "Mermade";
+            int distance = 0; //distance from player
+        } mermade;
+    };
+
+    bool invalid = true;
+
+} Entity;
+
+
+
+typedef struct {
+    //Overlay ov; // Overlay instance for drawing
+    uintptr_t CameraCachePointer;
+    int localHealth
 } CheatData;
 
 typedef struct {

@@ -1,45 +1,37 @@
-#ifndef OVERLAY_H
-#define OVERLAY_H
+// overlay/Overlay.h
+#pragma once
 
-#include <string>
-#include <cstdint>
-#include "overlay_wayland_c_bridge.h" // Our clean C header
-
-// By including the full cairo header here, we get the real typedefs
-// and avoid any conflicts with the C++ compiler.
-#include <cairo/cairo.h>
+#include <gtk/gtk.h>
+#include <gtk4-layer-shell.h>
+#include "shared_data.h" // Make sure this path is correct
 
 class Overlay {
 public:
-    struct Color { uint8_t r, g, b; };
-    static const Color RED, GREEN, BLUE, WHITE, BLACK, YELLOW, CYAN, MAGENTA;
-
     Overlay();
     ~Overlay();
-
-    bool initialize();
-    int dispatchEvents();
-
-    void clearBackBuffer();
-    void swapBuffers();
-    void drawLine(int x1, int y1, int x2, int y2, const Color& color, int thickness = 1);
-    void drawBox(int x, int y, int width, int height, const Color& color, int thickness = 1);
-    void drawText(int x, int y, const std::string& text, const Color& color, int font_size = 16);
-
-    int getWidth() const { return width; }
-    int getHeight() const { return height; }
-    bool isInitialized() const { return initialized; }
+    int run(int argc, char** argv);
 
 private:
-    wlc_context* ctx = nullptr;
+    void setup_window();
+    void connect_shared_memory();
 
-    // These now use the real typedefs from cairo.h and will not conflict.
-    cairo_surface_t* cairo_surface = nullptr;
-    cairo_t* cairo = nullptr;
+    // The GTK signal handlers
+    static void on_activate(GtkApplication* app, gpointer user_data);
+    static int on_command_line(GApplication* app, GApplicationCommandLine* cmdline, gpointer user_data);
 
-    int width = 0;
-    int height = 0;
-    bool initialized = false;
+    // FIX: Add a handler for the "realize" signal to set the input shape
+    static void on_realize(GtkWidget* widget, gpointer user_data);
+
+    static gboolean tick_callback(gpointer user_data);
+    static void draw_func(GtkDrawingArea* area, cairo_t* cr, int width, int height, gpointer user_data);
+
+    void queue_redraw();
+
+    // Member variables
+    int target_monitor_index = 0;
+    GtkApplication* app = nullptr;
+    GtkWidget* window = nullptr;
+    GtkWidget* drawing_area = nullptr;
+    SharedData* shared_data = nullptr;
+    uint64_t last_drawn_frame_id = 0;
 };
-
-#endif // OVERLAY_H

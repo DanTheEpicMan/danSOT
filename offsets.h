@@ -16,6 +16,7 @@ namespace Offsets {
                         ptr HealthComponent = 0x898; //Read rom Pawn (part of AthenaCharacter)
                             ptr Health = 0xD4; //Reads to CurrentHealthInfo struct, Health is first part of that struct
                         ptr RootComponent = 0x160;
+                            ptr RelativeLocation = 0xF8;
                         ptr ActorID = 0x24; //Part of actor class but get from Pawn, used for name
                         ptr Mesh = 0x418; //SkeletalMeshComponent, used for bones. Part of Character witch is subclass of Pawn
 
