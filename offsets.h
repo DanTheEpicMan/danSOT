@@ -17,6 +17,8 @@ namespace Offsets {
                             ptr Health = 0xD4; //Reads to CurrentHealthInfo struct, Health is first part of that struct
                         ptr RootComponent = 0x160;
                             ptr RelativeLocation = 0xF8;
+                            ptr RelativeRotation = 0x104;
+                            ptr RelativeScale3D = 0x110;
                         ptr ActorID = 0x24; //Part of actor class but get from Pawn, used for name
                         ptr Mesh = 0x418; //SkeletalMeshComponent, used for bones. Part of Character witch is subclass of Pawn
 
@@ -30,5 +32,14 @@ namespace Offsets {
 
     ptr GName = 0x8948EA8;
 
+    // ship (pawn when itterating through array)
+    ptr HullDamage = 0xF80;
+        ptr ActiveHullDamageZones = 0x450; //part of HullDamage
+            ptr SceneRootComponent = 0x450; //part of DamageZone, gives scene component
+                // RelativeLocation = 0xF8; //part of SceneComponent, gives location of anything, in this case damage zone
 
+    ptr ShipInternalWaterComponent = 0x630; //Part of ship
+        ptr ChildActor = 0x2D8; //Part of ShipInternalWaterComponent, gives ShipInternalWaterActor
+            ptr InternalWaterParams = 0x3B8;  ptr MaxWaterAmount = 0x8; //Part of ShipInternalWaterActor, gives ShipInternalWaterParams struct
+            ptr WaterAmount = 0x3F4; //Part of ShipInternalWaterActor, gives water amount in float, 0-1
 }

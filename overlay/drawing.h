@@ -115,6 +115,8 @@ public:
        write_buffer = nullptr;
    }
    void draw_text(float x, float y, const std::string& text, COLOR::Color color) {
+       if (x == -1 && y == -1) return;
+
        if (!write_buffer || write_buffer->command_count >= MAX_COMMANDS) return;
        auto& cmd = write_buffer->commands[write_buffer->command_count++];
        cmd.type = CMD_TEXT; cmd.text.x = x; cmd.text.y = y;
@@ -123,12 +125,16 @@ public:
        cmd.text.text[MAX_TEXT_LEN - 1] = '\0';
    }
    void draw_box(float x, float y, float width, float height, float thickness, COLOR::Color color) {
+       if (x == -1 && y == -1) return;
+
        if (!write_buffer || write_buffer->command_count >= MAX_COMMANDS) return;
        auto& cmd = write_buffer->commands[write_buffer->command_count++];
        cmd.type = CMD_BOX; cmd.box.x = x; cmd.box.y = y; cmd.box.width = width; cmd.box.height = height; cmd.box.thickness = thickness;
        set_color(cmd.box, color);
    }
    void draw_line(float x1, float y1, float x2, float y2, float thickness, COLOR::Color color) {
+        if (x1 == -1 && y1 == -1 && x2 == -1 && y2 == -1) return;
+
        if (!write_buffer || write_buffer->command_count >= MAX_COMMANDS) return;
        auto& cmd = write_buffer->commands[write_buffer->command_count++];
        cmd.type = CMD_LINE; cmd.line.x1 = x1; cmd.line.y1 = y1; cmd.line.x2 = x2; cmd.line.y2 = y2; cmd.line.thickness = thickness;

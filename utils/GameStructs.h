@@ -7,36 +7,27 @@
 class FVector
 {
 public:
-    FVector() : x(0.f), y(0.f), z(0.f)
-    {
-
-    }
-
-    FVector(float _x, float _y, float _z) : x(_x), y(_y), z(_z)
-    {
-
-    }
-    ~FVector()
-    {
-
-    }
+    FVector() : x(0.f), y(0.f), z(0.f) {}
+    FVector(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
+    ~FVector() {}
 
     float x;
     float y;
     float z;
 
-    inline float Dot(FVector v)
-    {
+    // --- Start of Fixes ---
+
+    // Marked as const because it doesn't modify the 'this' vector
+    inline float Dot(FVector v) const {
         return x * v.x + y * v.y + z * v.z;
     }
 
-
-    float dot(const FVector& other) const
-    {
+    // This is just an alias for Dot, also marked const
+    float dot(const FVector& other) const {
         return this->x * other.x + this->y * other.y + this->z * other.z;
     }
 
-
+    // normalize() modifies the vector, so it CANNOT be const. This is correct.
     void normalize() {
         float length = std::sqrt(x * x + y * y + z * z);
         if (length > 0.0001f) {
@@ -46,7 +37,7 @@ public:
         }
     }
 
-    // Cross product of two vectors
+    // Your static cross product function is correct. We will change how it's called.
     static FVector cross(const FVector& v1, const FVector& v2) {
         return FVector(
             v1.y * v2.z - v1.z * v2.y,
@@ -55,25 +46,27 @@ public:
         );
     }
 
-    inline float Distance(FVector v)
-    {
+    // Marked as const
+    inline float Distance(FVector v) const {
         return float(sqrtf(powf(v.x - x, 2.0) + powf(v.y - y, 2.0) + powf(v.z - z, 2.0)));
     }
 
-    FVector operator+(FVector v)
-    {
+    // Marked as const
+    FVector operator+(FVector v) const {
         return FVector(x + v.x, y + v.y, z + v.z);
     }
 
-    FVector operator-(FVector v)
-    {
+    // Marked as const
+    FVector operator-(FVector v) const {
         return FVector(x - v.x, y - v.y, z - v.z);
     }
 
+    // Marked as const
     FVector operator*(float number) const {
         return FVector(x * number, y * number, z * number);
     }
 
+    // Marked as const
     FVector operator/(float number) const {
         return FVector(x / number, y / number, z / number);
     }
@@ -177,5 +170,70 @@ inline D3DMATRIX Matrix(FVector rot, FVector origin) {
 
     return matrix;
 }
+
+// Quaternion structure
+struct FQuat
+{
+    double x;
+    double y;
+    double z;
+    double w;
+};
+
+// You'll need a definition for FRotator if you don't have one
+// It's just like FVector but often named Pitch, Yaw, Roll
+struct FRotator {
+    double Pitch;
+    double Yaw;
+    double Roll;
+
+    FQuat ToQuat() const {
+        const float DEG_TO_RAD = M_PI / (180.f);
+        const float DIVIDE_BY_2 = DEG_TO_RAD / 2.f;
+        float SP, SY, SR;
+        float CP, CY, CR;
+
+        SP = sin(Pitch * DIVIDE_BY_2);
+        CP = cos(Pitch * DIVIDE_BY_2);
+        SY = sin(Yaw * DIVIDE_BY_2);
+        CY = cos(Yaw * DIVIDE_BY_2);
+        SR = sin(Roll * DIVIDE_BY_2);
+        CR = cos(Roll * DIVIDE_BY_2);
+
+        FQuat q;
+        q.x = CR * SP * CY - SR * CP * SY;
+        q.y = CR * CP * SY + SR * SP * CY;
+        q.z = SR * CP * CY - CR * SP * SY;
+        q.w = CR * CP * CY + SR * SP * SY;
+        return q;
+    }
+};
+
+
+struct alignas(16) FTransform {
+    FQuat   Rotation;
+    FVector Translation;
+    char    pad_0001[4];
+    FVector Scale3D;
+    char    pad_0002[4];
+
+    FVector TransformPosition(const FVector& V) const {
+        const FQuat& R = Rotation;
+        const FVector& S = Scale3D;
+        const FVector& T = Translation;
+        const FVector T2(R.x, R.y, R.z);
+
+        // Fixed the way cross() is called
+        const FVector Vtemp = FVector::cross(T2, V) * (2.0f * R.w);
+        const FVector V_rotated = V + Vtemp + FVector::cross(T2, Vtemp);
+
+        FVector result;
+        result.x = V_rotated.x * S.x + T.x;
+        result.y = V_rotated.y * S.y + T.y;
+        result.z = V_rotated.z * S.z + T.z;
+
+        return result;
+    }
+};
 
 #endif //GAMESTRUCTS_H

@@ -3,54 +3,66 @@
 #define LOCALSTRUCTS_H
 #pragma once
 #include "GameStructs.h"
+#include <array>
+
 
 enum EntTypes {
     NETPROXYSHIP,
     SHIP,
+    ROWBOAT,
 
     PLAYER,
     MERMADE
 };
 
 typedef struct {
-
+    std::string displayName = "Player";
+    int distance = 0;
 } Player;
 
+
+struct NetProxyShipData {
+    std::string displayName = "Far Ship";
+    int distance = 0;
+};
+
+struct MermadeData {
+    std::string displayName = "Mermade";
+    int distance = 0;
+};
+
 typedef struct { //read everything from pawn
+    float health;
+
     std::string displayName = "Ship";
     double distance = 0;
-    FVector location;
     float WaterAmount = 0; //0-1, 1 is full
+    std::array<FVector, 30> holeLocations;
+    int holeCount = 0;
+
+
+
+    //trajectory
+
 } Ship;
 
 typedef struct {
 
 } Island;
 
-typedef struct {
-    float health;
 
-    char name[68];
+typedef struct {
+    std::string name;
     FVector location;
 
     EntTypes type; //determins what type to use
-    union {
-        struct {
-            std::string displayName = "Far Ship";
-            int distance = 0; //distance from player
-        } netProxyShip;
 
-        Ship ship;
 
-        Player player;
-
-        struct {
-            std::string displayName = "Mermade";
-            int distance = 0; //distance from player
-        } mermade;
-    };
-
-    bool invalid = true;
+    //memory inefficient but its negligible
+    NetProxyShipData netProxyShip;
+    MermadeData mermade;
+    Ship ship;
+    Player player;
 
 } Entity;
 
@@ -59,7 +71,7 @@ typedef struct {
 typedef struct {
     //Overlay ov; // Overlay instance for drawing
     uintptr_t CameraCachePointer;
-    int localHealth
+    int localHealth;
 } CheatData;
 
 typedef struct {
@@ -97,5 +109,6 @@ inline Coords WorldToScreen(FVector TargetLocation, FMinimalViewInfo CameraInfo,
 
     return ScreenLocation;
 }
+
 
 #endif //LOCALSTRUCTS_H

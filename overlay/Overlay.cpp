@@ -8,6 +8,8 @@
 #include <cairo/cairo.h>
 #include <string> // <<< DEBUGGING >>> For creating debug strings
 
+#define debug false
+
 Overlay::Overlay() = default;
 
 Overlay::~Overlay() {
@@ -124,17 +126,21 @@ gboolean Overlay::tick_callback(gpointer user_data) {
    // Using memory_order_acquire to be safe, ensuring we see the new frame_id
    uint64_t current_frame_id = self->shared_data->frame_id.load(std::memory_order_acquire);
 
-   // <<< DEBUGGING >>> Print status periodically
+#if debug
+   <<< DEBUGGING >>> Print status periodically
    if (tick_count++ % 120 == 0) { // Print once per second (approx)
        g_print("Tick... Shared Frame ID: %lu, My Last Drawn Frame ID: %lu\n",
                current_frame_id, self->last_drawn_frame_id);
    }
+#endif
 
    if (current_frame_id > self->last_drawn_frame_id) {
+#if debug
        // <<< DEBUGGING >>> Log when we detect a new frame
        if (tick_count % 120 == 1) { // Only print this right after the status print
           g_print(">>> New frame detected! Queueing redraw.\n");
        }
+#endif
        self->last_drawn_frame_id = current_frame_id;
        self->queue_redraw();
    }
@@ -158,6 +164,7 @@ void Overlay::draw_func(GtkDrawingArea* area, cairo_t* cr, int width, int height
    uint32_t count = buffer_to_draw->command_count;
    if (count > MAX_COMMANDS) count = MAX_COMMANDS;
 
+#if debug
    // <<< DEBUGGING >>> Draw debug info directly on the screen
    char debug_text[128];
    snprintf(debug_text, sizeof(debug_text), "Frame: %lu | Buf Idx: %d | Cmds: %u",
@@ -175,7 +182,7 @@ void Overlay::draw_func(GtkDrawingArea* area, cairo_t* cr, int width, int height
        g_print("Draw... Reading buffer %d with %u commands.\n", read_idx, count);
    }
    // <<< END DEBUGGING >>>
-
+#endif
 
    // Now, render the actual commands from the buffer
    for (uint32_t i = 0; i < count; ++i) {

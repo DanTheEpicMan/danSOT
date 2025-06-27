@@ -68,6 +68,7 @@ T ReadMemory(uintptr_t address)
 
 void ReadMemoryBuffer(pid_t pid, long address, void* buffer, size_t size)
 {
+
     struct iovec local[1];
     struct iovec remote[1];
 
@@ -190,3 +191,9 @@ template TArray<uintptr_t> ReadMemory<TArray<uintptr_t>>(uintptr_t address);
 template FCameraCacheEntry ReadMemory<FCameraCacheEntry>(uintptr_t address);
 //For player location
 template FVector ReadMemory<FVector>(uintptr_t address);
+template FRotator ReadMemory<FRotator>(uintptr_t address);
+template FQuat ReadMemory<FQuat>(uintptr_t address);
+//For TRansform (bones, ship holes, etc.)
+template FTransform ReadMemory<FTransform>(uintptr_t address);
+
+template char ReadMemory<char>(uintptr_t address);
