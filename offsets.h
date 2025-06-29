@@ -7,6 +7,10 @@ namespace Offsets {
     ptr UWorld = 0x8A19E30; //Or GWorld, same thing if your updating
         ptr GameState = 0x40; //Read forom UWorld
             ptr PlayerArray = 0x3C8; //Read from GameState
+            ptr CrewService = 0x5D0;
+                ptr Crews = 0x478; //Read TArray from CrewService, contains Crew structs
+                    ptr CrewMatesPlayerStates = 0x20; // In Crew struct, called "Players". Read TArray from Crew struct, contains PlayerState structs
+
         ptr OwnerGameInstance = 0x250; //Reads from Uworld
             ptr LocalPlayers = 0x38; //Reads from GameInstance, reads array, need to read result to get first local player instance
                 ptr PlayerController = 0x30; //read from LocalPlayer
@@ -26,6 +30,9 @@ namespace Offsets {
                     ptr PlayerCameraManager = 0x430; //Read from PlayerController
                         ptr CameraCachePrivate = 0x410; //Read from PlayerCameraManager, contains FCameraCacheEntry struct
 
+                    //Player State
+                    ptr LocalPlayerState = 0x3C0;
+                        ptr PlayerId = 0x3C8; //Read from PlayerState, used for crew member check
 
         ptr PresistentLevel = 0x60; // Part of UWorld
             ptr OwningActor = 0xA0; //Part of Object part of Level (IDK what this is based on but this value probs not changing)
@@ -36,7 +43,7 @@ namespace Offsets {
     ptr HullDamage = 0xF80;
         ptr ActiveHullDamageZones = 0x450; //part of HullDamage
             ptr SceneRootComponent = 0x450; //part of DamageZone, gives scene component
-                // RelativeLocation = 0xF8; //part of SceneComponent, gives location of anything, in this case damage zone
+                ptr ActorCoordinates = 0x11c; //part of SceneComponent, gives location of anything, in this case damage zone
 
     ptr ShipInternalWaterComponent = 0x630; //Part of ship
         ptr ChildActor = 0x2D8; //Part of ShipInternalWaterComponent, gives ShipInternalWaterActor

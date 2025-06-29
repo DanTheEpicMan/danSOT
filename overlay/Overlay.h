@@ -1,6 +1,7 @@
 // overlay/Overlay.h
 #pragma once
 
+#include <chrono>
 #include <gtk/gtk.h>
 #include <gtk4-layer-shell.h>
 #include "shared_data.h" // Make sure this path is correct
@@ -34,4 +35,8 @@ private:
     GtkWidget* drawing_area = nullptr;
     SharedData* shared_data = nullptr;
     uint64_t last_drawn_frame_id = 0;
+
+    std::chrono::steady_clock::time_point last_fps_time = std::chrono::steady_clock::now();
+    int frame_counter = 0;
+    float current_fps = 0.0f;
 };

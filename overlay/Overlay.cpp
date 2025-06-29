@@ -1,5 +1,7 @@
 // overlay/Overlay.cpp
 #include "Overlay.h"
+
+#include <chrono>
 #include <iostream>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -155,6 +157,25 @@ void Overlay::draw_func(GtkDrawingArea* area, cairo_t* cr, int width, int height
 
    auto* self = static_cast<Overlay*>(user_data);
    if (!self->shared_data) return;
+
+    // --- FPS calculation ---
+    self->frame_counter++;
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - self->last_fps_time).count();
+    if (elapsed >= 1000) {
+        self->current_fps = self->frame_counter * 1000.0f / elapsed;
+        self->frame_counter = 0;
+        self->last_fps_time = now;
+    }
+
+    // --- Draw FPS ---
+    char fps_text[32];
+    snprintf(fps_text, sizeof(fps_text), "FPS: %.1f", self->current_fps);
+    cairo_set_source_rgba(cr, 1, 1, 0, 1); // Yellow
+    cairo_select_font_face(cr, "monospace", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+    cairo_set_font_size(cr, 16.0);
+    cairo_move_to(cr, 10, 40); // Below any other text
+    cairo_show_text(cr, fps_text);
 
    // This ensures that we read the buffer index *after* it has been updated by the writer
    int read_idx = self->shared_data->active_buffer_idx.load(std::memory_order_acquire);

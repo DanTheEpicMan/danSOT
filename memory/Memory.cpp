@@ -87,6 +87,7 @@ void ReadMemoryBuffer(pid_t pid, long address, void* buffer, size_t size)
                   << " bytes at address 0x" << std::hex << address
                   << " (pid " << pid << "). nread=" << nread << std::endl;
         perror("[ReadMemory (Buffer)] process_vm_readv");
+        //std::cout << "Trace: " << __FILE__ << ":" << __LINE__ << " in " << __func__ << std::endl;
 #endif
     }
 }
@@ -187,6 +188,7 @@ template uintptr_t ReadMemory<uintptr_t>(uintptr_t address);
 
 //For reading player list or bone list and stuff
 template TArray<uintptr_t> ReadMemory<TArray<uintptr_t>>(uintptr_t address);
+template TArray<FTransform> ReadMemory<TArray<FTransform>>(uintptr_t address);
 //For Camera Stuff
 template FCameraCacheEntry ReadMemory<FCameraCacheEntry>(uintptr_t address);
 //For player location
@@ -195,5 +197,7 @@ template FRotator ReadMemory<FRotator>(uintptr_t address);
 template FQuat ReadMemory<FQuat>(uintptr_t address);
 //For TRansform (bones, ship holes, etc.)
 template FTransform ReadMemory<FTransform>(uintptr_t address);
+template GUID ReadMemory<GUID>(uintptr_t address);
 
 template char ReadMemory<char>(uintptr_t address);
+template bool ReadMemory<bool>(uintptr_t address);

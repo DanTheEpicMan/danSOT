@@ -25,7 +25,10 @@ add_executable(danSOT
         main.cpp
         utils/ProcessUtils.cpp
         memory/Memory.cpp
-        overlay/drawing.h)
+        overlay/drawing.h
+        utils/tables.h
+        hacks/Aimbot.cpp
+        hacks/Aimbot.h)
 
 target_link_libraries(danSOT PRIVATE
         # Link rt for shm_open / shm_unlink on some systems

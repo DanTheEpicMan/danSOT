@@ -16,15 +16,25 @@
 
 namespace COLOR {
    using Color = uint32_t;
-   inline constexpr Color RED     = 0xFF0000FF;
-   inline constexpr Color GREEN   = 0x00FF00FF;
-   inline constexpr Color BLUE    = 0x0000FFFF;
-   inline constexpr Color WHITE   = 0xFFFFFFFF;
-   inline constexpr Color BLACK   = 0x000000FF;
-   inline constexpr Color YELLOW  = 0xFFFF00FF;
-   inline constexpr Color MAGENTA = 0xFF00FFFF;
-   inline constexpr Color CYAN    = 0x00FFFFFF;
-   inline constexpr Color TransparentRed = 0xFF000080;
+       inline constexpr Color RED     = 0xFF0000FF;
+       inline constexpr Color GREEN   = 0x00FF00FF;
+       inline constexpr Color BLUE    = 0x0000FFFF;
+       inline constexpr Color WHITE   = 0xFFFFFFFF;
+       inline constexpr Color BLACK   = 0x000000FF;
+       inline constexpr Color YELLOW  = 0xFFFF00FF;
+       inline constexpr Color MAGENTA = 0xFF00FFFF;
+       inline constexpr Color CYAN    = 0x00FFFFFF;
+       inline constexpr Color ORANGE  = 0xFFA500FF;
+       inline constexpr Color PINK    = 0xFF9999FF;
+
+       inline constexpr Color TransparentLightRed    = 0xFF332780; // A light red (Tomato) with 50% transparency
+       inline constexpr Color TransparentLightPink   = 0xFFB6C1A0; // A light pink (Light Pink) with 50% transparency
+       inline constexpr Color TransparentOrange      = 0xFF4D0080;
+       inline constexpr Color TransparentLightGold   = 0xFFD70080; // A classic Gold with 50% transparency
+       inline constexpr Color TransparentLightPurple = 0xBA55D380; // A medium, light purple (Medium Orchid) with 50% transparency
+       inline constexpr Color TransparentLightBlue   = 0xADD8E680; // A classic Light Blue with 50% transparency
+       inline constexpr Color TransparentLightGreen  = 0x90EE9080; // A classic Light Green with 50% transparency
+       inline constexpr Color TransparentLightWhite  = 0xFFFFFF80; // A classic Light White with 50% transparency
 }
 
 class DrawingContext {
