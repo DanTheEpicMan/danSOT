@@ -29,6 +29,8 @@ typedef struct {
     uintptr_t meshComponentPtr;
 
     GUID shipID;
+
+    FVector velocity;
 } Player;
 
 
@@ -78,6 +80,8 @@ typedef struct {
 
 
 typedef struct {
+    uintptr_t pawn;
+
     std::string name;
     FVector location;
 

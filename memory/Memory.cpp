@@ -9,7 +9,7 @@
 pid_t ProcessId = 0;
 long BaseAddress = 0;
 
-#define debug true
+#define debug false
 
 // Memory read/write function templates implementation
 template<typename T>

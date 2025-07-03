@@ -4,6 +4,8 @@
 #define GAMESTRUCTS_H
 #include <cmath>
 #include <cstring>
+#include <cstdint>
+
 
 class FVector
 {
@@ -12,11 +14,28 @@ public:
     FVector(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
     ~FVector() {}
 
+
+
     float x;
     float y;
     float z;
 
-    // --- Start of Fixes ---
+    float Size() const {
+        return std::sqrt(x * x + y * y + z * z);
+    }
+
+    float SizeSquared() const {
+        return x * x + y * y + z * z;
+    }
+
+    FVector unit() const {
+        float length = this->Size();
+        if (length > 0.0001f) {
+            return FVector(x / length, y / length, z / length);
+        }
+        return FVector(0.f, 0.f, 0.f);
+    }
+
 
     // Marked as const because it doesn't modify the 'this' vector
     inline float Dot(FVector v) const {
@@ -50,6 +69,10 @@ public:
     // Marked as const
     inline float Distance(FVector v) const {
         return float(sqrtf(powf(v.x - x, 2.0) + powf(v.y - y, 2.0) + powf(v.z - z, 2.0)));
+    }
+
+    float Length() const {
+        return sqrtf(x * x + y * y + z * z);
     }
 
     // Marked as const
@@ -119,9 +142,9 @@ public:
     }
 
 protected:
-    uint64_t m_Data;
-    uint32_t m_nCount;
-    uint32_t m_nMax;
+    uint64_t m_Data = 0;
+    uint32_t m_nCount = 0;
+    uint32_t m_nMax = 0;
 };
 
 

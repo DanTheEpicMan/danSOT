@@ -28,7 +28,11 @@ add_executable(danSOT
         overlay/drawing.h
         utils/tables.h
         hacks/Aimbot.cpp
-        hacks/Aimbot.h)
+        hacks/Aimbot.h
+        hacks/Mouse.cpp
+        hacks/Mouse.h
+        hacks/KeyboardMonitor.cpp
+        hacks/KeyboardMonitor.h)
 
 target_link_libraries(danSOT PRIVATE
         # Link rt for shm_open / shm_unlink on some systems
