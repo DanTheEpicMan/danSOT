@@ -29,10 +29,9 @@ add_executable(danSOT
         utils/tables.h
         hacks/Aimbot.cpp
         hacks/Aimbot.h
-        hacks/Mouse.cpp
-        hacks/Mouse.h
-        hacks/KeyboardMonitor.cpp
-        hacks/KeyboardMonitor.h)
+        hacks/InputManager.cpp
+        hacks/InputManager.h
+)
 
 target_link_libraries(danSOT PRIVATE
         # Link rt for shm_open / shm_unlink on some systems

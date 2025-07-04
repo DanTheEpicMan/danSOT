@@ -17,8 +17,8 @@
 #include "overlay/drawing.h" //overlay/shared_data.h imported by this
 #include "utils/tables.h"
 #include "hacks/Aimbot.h"
-#include "hacks/Mouse.h"
-#include "hacks/KeyboardMonitor.h"
+#include "hacks/InputManager.h"
+#include "hacks/InputManager.h"
 
 #define ptr uintptr_t //Makes it a little more readable
 using BYTE = unsigned char;
@@ -112,11 +112,38 @@ void RenderSkeleton(DrawingContext* ctx, uintptr_t meshComponent, const FCameraC
     }
 }
 
+bool isShip(const std::string& actorName) {
+    return actorName == "BP_SmallShipTemplate_C" || actorName == "BP_SmallShipNetProxy_C" ||
+           actorName == "BP_MediumShipTemplate_C" || actorName == "BP_MediumShipNetProxy_C" ||
+           actorName == "BP_LargeShipTemplate_C" || actorName == "BP_LargeShipNetProxy_C" ||
+           actorName == "BP_AISmallShipTemplate_C" || actorName == "BP_AISmallShipNetProxy_C" ||
+           actorName == "BP_AILargeShipTemplate_C" || actorName == "BP_AILargeShipNetProxy_C";
+}
+
+// A helper to get actor name, assuming you have a way to do this (like in your main loop)
+std::string getActorName(uintptr_t actorAddress, uintptr_t GNames) {
+    if (!actorAddress) return "";
+    int actorId = ReadMemory<int>(actorAddress + Offsets::ActorID);
+    if (actorId <= 0) return "";
+
+    char name_text[68];
+    const auto chunk_offset = (actorId / 0x4000) * 8;
+    const auto chunk_index_offset = (actorId % 0x4000) * 8;
+    const auto name_chunk = ReadMemory<uintptr_t>(GNames + chunk_offset);
+    if (!name_chunk) return "";
+    const auto name_ptr = ReadMemory<uintptr_t>(name_chunk + chunk_index_offset);
+    if (!name_ptr) return "";
+    ReadMemoryBuffer(name_ptr + 0xC, name_text, sizeof(name_text));
+    name_text[67] = '\0';
+    return std::string(name_text);
+}
+
+
 FVector GetPlayerGlobalVelocity(uintptr_t playerPawnAddress) {
     // 1. Get the player's own linear velocity.
-    // Every AActor (including ACharacter) has a ReplicatedMovement struct.
-    FVector globalVelocity = ReadMemory<FVector>(playerPawnAddress + 0x90 + 0x0);
-    std::cout << "GV: " << globalVelocity.x << ", " << globalVelocity.y << " " << globalVelocity.z << std::endl;
+    uintptr_t LPCharicterMovement = ReadMemory<uintptr_t>(playerPawnAddress + 0x420);
+    FVector globalVelocity = ReadMemory<FVector>(LPCharicterMovement + 0xCC); //Velocityc
+    FVector location = ReadMemory<FVector>(ReadMemory<ptr>(playerPawnAddress + Offsets::RootComponent) + Offsets::RelativeLocation);
 
     // 2. Find the object the player is standing on.
     // ACharacter has a BasedMovement member (at 0x430) which contains info about the base.
@@ -129,125 +156,148 @@ FVector GetPlayerGlobalVelocity(uintptr_t playerPawnAddress) {
         if (attachedParentComp != 0) {
             uintptr_t childActor = ReadMemory<uintptr_t>(attachedParentComp + 0x2D8); // //UPrimitiveComponent, it's the first value //CHILD_ACTOR
             uintptr_t parentActor = ReadMemory<uintptr_t>(childActor + 0x190); //PARENT_COMPONENT //0x190 + 0x0, points to actor
-
             while (true) {
                 uintptr_t nextParentActor = ReadMemory<uintptr_t>(parentActor + 0x190); //PARENT_COMPONENT
-                std::cout << "Parent Actor: " << nextParentActor << std::endl;
-
-                //auto movement = ReadMemory<FVector>(attachedParentComp + 0x90);
-                auto movement = ReadMemory<FVector>(parentActor + 0x90);
-                std::cout << movement.x << " " << movement.y << " " << movement.z << std::endl;
                 if (nextParentActor == 0 || nextParentActor == parentActor) {
                     break; // No more parents or reached the end of the chain
                 }
                 parentActor = nextParentActor;
             }
             //parentActor now represents ship
-            std::cout << "Parent Actor out: " << parentActor << std::endl;
-            auto movement = ReadMemory<FVector>(parentActor + 0x90);
-            std::cout << "Final: " <<  movement.x << " " << movement.y << " " << movement.z << std::endl;
-
-            auto LPRootComp = ReadMemory<uintptr_t>(parentActor + 0x420);
-            auto LPRelativeMovement = ReadMemory<FVector>(LPRootComp + 0xCC);
-            std::cout << "Location Root: " << LPRelativeMovement.x << " " << LPRelativeMovement.y << " " << LPRelativeMovement.z << std::endl;
-
-            auto VELOC = ReadMemory<FVector>(parentActor + 0x468 + 0x2C);
-            std::cout << "Location Replica: " << VELOC.x << " " << VELOC.y << " " << VELOC.z << std::endl;
+            uintptr_t movementProxyComponent = ReadMemory<uintptr_t>(parentActor + 0x638);
+            uintptr_t movementProxyActor = ReadMemory<uintptr_t>(movementProxyComponent + 0x2d8); // UChildActorComponent::ChildActor
+            FVector global = ReadMemory<FVector>(movementProxyActor + 0x3b0);
+            return global + globalVelocity;
 
 
         }
-
-
-
     }
     return globalVelocity;
 }
 
-#include <map> // Make sure to include this
+// FVector GetShipVelocityByDistance(uintptr_t playerPawnAddress, std::vector<Entity> ships) {
+//     uintptr_t rootComponent  = ReadMemory<uintptr_t>(playerPawnAddress + Offsets::RootComponent);
+//     FTransform componentToWorld = ReadMemory<FTransform>(rootComponent + 0x130);
+//     FVector Location = componentToWorld.Translation;
+//
+//     int shortestDistance = 3000; //Largest Dist to consider
+//     int shortestShipIndex = -1;
+//     FVector closestShipPos = {0, 0, 0};
+//     for (int i = 0; i < ships.size(); i++) {
+//         if (ships[i].location.Distance(Location) > shortestDistance) {
+//             shortestShipIndex = i;
+//             shortestDistance = ships[i].location.Distance(Location);
+//             closestShipPos = ships[i].location;
+//         }
+//     }
+//
+//     std::cout << "Found ship at index: " << shortestShipIndex << " with distance: " << shortestDistance << std::endl;
+//
+//     if (shortestDistance != 3000) {
+//         uintptr_t movementProxyComponent = ReadMemory<uintptr_t>(ships[shortestShipIndex].pawn + 0x638);
+//         uintptr_t movementProxyActor = ReadMemory<uintptr_t>(movementProxyComponent + 0x2d8); // UChildActorComponent::ChildActor
+//         FVector global = ReadMemory<FVector>(movementProxyActor + 0x3b0);
+//
+//         return global;
+//     }
+//     return {0, 0, 0}; // No ship found within distance
+// }
+FVector GetShipVelocityByDistance(uintptr_t playerPawnAddress, std::vector<Entity> ships) {
+    uintptr_t rootComponent  = ReadMemory<uintptr_t>(playerPawnAddress + Offsets::RootComponent);
+    std::cout << "[GetShipVelocityByDistance] rootComponent: 0x" << std::hex << rootComponent << std::dec << std::endl;
+    FTransform componentToWorld = ReadMemory<FTransform>(rootComponent + 0x130);
+    FVector Location = componentToWorld.Translation;
+    std::cout << "[GetShipVelocityByDistance] Player Location: (" << Location.x << ", " << Location.y << ", " << Location.z << ")" << std::endl;
 
-// Helper macro
-#define ADD_KEY(map, key) map[key] = #key
-
-std::map<int, std::string> initializeKeyNames() {
-    std::map<int, std::string> key_names;
-    // ... (all the previous keys like KEY_A, KEY_ESC, etc. should remain here) ...
-    ADD_KEY(key_names, KEY_ESC);
-    ADD_KEY(key_names, KEY_1);
-    ADD_KEY(key_names, KEY_2);
-    // ... etc ...
-    ADD_KEY(key_names, KEY_LEFTCTRL);
-    ADD_KEY(key_names, KEY_A);
-    // ... etc ...
-    ADD_KEY(key_names, KEY_V);
-    ADD_KEY(key_names, KEY_SPACE);
-    ADD_KEY(key_names, KEY_F1);
-    // ... etc ...
-
-    // --- NEW and IMPORTANT: Add Numpad and Mouse Keys ---
-    ADD_KEY(key_names, KEY_NUMLOCK);
-    ADD_KEY(key_names, KEY_KPSLASH);
-    ADD_KEY(key_names, KEY_KPASTERISK);
-    ADD_KEY(key_names, KEY_KPMINUS);
-    ADD_KEY(key_names, KEY_KPPLUS);
-    ADD_KEY(key_names, KEY_KPENTER);
-    ADD_KEY(key_names, KEY_KPDOT);
-
-    ADD_KEY(key_names, KEY_KP0);
-    ADD_KEY(key_names, KEY_KP1);
-    ADD_KEY(key_names, KEY_KP2);
-    ADD_KEY(key_names, KEY_KP3);
-    ADD_KEY(key_names, KEY_KP4);
-    ADD_KEY(key_names, KEY_KP5);
-    ADD_KEY(key_names, KEY_KP6);
-    ADD_KEY(key_names, KEY_KP7);
-    ADD_KEY(key_names, KEY_KP8);
-    ADD_KEY(key_names, KEY_KP9);
-
-    // Standard mouse buttons
-    ADD_KEY(key_names, BTN_LEFT);
-    ADD_KEY(key_names, BTN_RIGHT);
-    ADD_KEY(key_names, BTN_MIDDLE);
-    ADD_KEY(key_names, BTN_SIDE);   // Often Mouse 4
-    ADD_KEY(key_names, BTN_EXTRA);  // Often Mouse 5
-    ADD_KEY(key_names, BTN_FORWARD);
-    ADD_KEY(key_names, BTN_BACK);
-
-    return key_names;
-}
-
-void debugPrintMouseKeyPresses(const Mouse& mouse, const std::map<int, std::string>& key_names) {
-    // A static vector to remember the state from the last frame.
-    // This is separate from any other debug function's state.
-    static std::vector<bool> was_pressed_on_mouse(KEY_MAX, false);
-
-    for (int key_code = 0; key_code < KEY_MAX; ++key_code) {
-        // Get the key state specifically from the mouse object
-        bool is_pressed_now = mouse.isKeyDown(key_code);
-
-        // Check if the key is pressed now AND it was NOT pressed in the last frame
-        if (is_pressed_now && !was_pressed_on_mouse[key_code]) {
-            auto it = key_names.find(key_code);
-            if (it != key_names.end()) {
-                std::cout << "[MOUSE DEBUG] Key Pressed: " << it->second
-                          << " (Code: " << key_code << ")" << std::endl;
-            } else {
-                std::cout << "[MOUSE DEBUG] Unknown Key Pressed (Code: " << key_code << ")" << std::endl;
-            }
+    int shortestDistance = 3000; //Largest Dist to consider
+    int shortestShipIndex = -1;
+    FVector closestShipPos = {0, 0, 0};
+    for (int i = 0; i < ships.size(); i++) {
+        float dist = ships[i].location.Distance(Location);
+        std::cout << "[GetShipVelocityByDistance] Ship " << i << " at (" << ships[i].location.x << ", " << ships[i].location.y << ", " << ships[i].location.z << ") distance: " << dist << std::endl;
+        if (dist < shortestDistance) {
+            shortestShipIndex = i;
+            shortestDistance = dist;
+            closestShipPos = ships[i].location;
         }
-        // Update the state for the next frame
-        was_pressed_on_mouse[key_code] = is_pressed_now;
     }
+
+    std::cout << "[GetShipVelocityByDistance] Found ship at index: " << shortestShipIndex << " with distance: " << shortestDistance << std::endl;
+
+    if (shortestDistance != 3000 && shortestShipIndex != -1) {
+        uintptr_t movementProxyComponent = ReadMemory<uintptr_t>(ships[shortestShipIndex].pawn + 0x638);
+        // std::cout << "[GetShipVelocityByDistance] movementProxyComponent: 0x" << std::hex << movementProxyComponent << std::dec << std::endl;
+        uintptr_t movementProxyActor = ReadMemory<uintptr_t>(movementProxyComponent + 0x2d8); // UChildActorComponent::ChildActor
+        // std::cout << "[GetShipVelocityByDistance] movementProxyActor: 0x" << std::hex << movementProxyActor << std::dec << std::endl;
+        FVector global = ReadMemory<FVector>(movementProxyActor + 0x3b0);
+        // std::cout << "[GetShipVelocityByDistance] Ship velocity: (" << global.x << ", " << global.y << ", " << global.z << ")" << std::endl;
+
+        return global;
+    }
+    // std::cout << "[GetShipVelocityByDistance] No ship found within distance, returning (0,0,0)" << std::endl;
+    return {0, 0, 0}; // No ship found within distance
 }
+
+FVector GetPlayerGlobalVelocitySloppy(uintptr_t playerPawnAddress, std::vector<Entity> ships) {
+    //Get Velocity
+    uintptr_t characterMovement  = ReadMemory<uintptr_t>(playerPawnAddress + 0x420);
+    FVector PlayerVelocity = ReadMemory<FVector>(characterMovement  + 0xCC);
+
+    //Get Location
+    FVector location = ReadMemory<FVector>(ReadMemory<ptr>(playerPawnAddress + Offsets::RootComponent) + Offsets::RelativeLocation);
+
+    //Get BaseComponent
+    uintptr_t baseComponentAddr = ReadMemory<uintptr_t>(playerPawnAddress + 0x430 + 0x0);
+
+    uintptr_t attachedParentComp = ReadMemory<uintptr_t>(baseComponentAddr + 0xD0); //USceneComponent //ATTACH_PARENT
+    uintptr_t childActor = ReadMemory<uintptr_t>(attachedParentComp + 0x2D8); // //UPrimitiveComponent, it's the first value //CHILD_ACTOR
+    uintptr_t parentActor = ReadMemory<uintptr_t>(childActor + 0x190); //PARENT_COMPONENT //0x190 + 0x0, points to actor
+    // std::cout << "Base Component Address: 0x" << std::hex << baseComponentAddr << std::dec << std::endl;
+    // std::cout << "Location from center: " << location.Distance(FVector(0, 0, 0)) << std::endl;
+    // std::cout << "Player Velocity: " << PlayerVelocity.x << ", " << PlayerVelocity.y << ", " << PlayerVelocity.z << std::endl;
+
+    // std::cout << "Child Actor Address: 0x" << std::hex << childActor << std::dec << std::endl;
+    // std::cout << "Parent Actor Address: 0x" << std::hex << parentActor << std::dec << std::endl;
+
+    if (baseComponentAddr == 0 && location.Distance({0, 0, 0}) < 3000 && PlayerVelocity.Distance(FVector(0, 0, 0)) < 1) { //On ladder or interacting with something on a ship
+        //Read by getting closest ship
+        // std::cout << "On ladder or interacting with something on a ship, returning ship velocity." << std::endl;
+        return GetShipVelocityByDistance(playerPawnAddress, ships) + PlayerVelocity; //Add player velocity to ship velocity
+    } else if (baseComponentAddr == 0) { //in water
+        // std::cout << "In water, returning player velocity." << std::endl;
+        return PlayerVelocity;
+    } else if (childActor == 0) { //on island or specific part of ship
+        // std::cout << "On island, returning player velocity." << std::endl;
+        return GetShipVelocityByDistance(playerPawnAddress, ships) + PlayerVelocity;
+    } else if (childActor > 0x4931d0000000 && parentActor == 0) { //on stairs or on lower deck
+        // std::cout << "On stairs or on lower deck, returning ship velocity." << std::endl;
+        return GetShipVelocityByDistance(playerPawnAddress, ships) + PlayerVelocity;
+    } else { //standing on the ship normally
+        // std::cout << "Standing on the ship normally, calculating ship velocity." << std::endl;
+        while (true) {
+            uintptr_t nextParentActor = ReadMemory<uintptr_t>(parentActor + 0x190); //PARENT_COMPONENT
+            if (nextParentActor == 0 || nextParentActor == parentActor) {
+                break; // No more parents or reached the end of the chain
+            }
+            parentActor = nextParentActor;
+        }
+
+        uintptr_t movementProxyComponent = ReadMemory<uintptr_t>(parentActor + 0x638);
+        uintptr_t movementProxyActor = ReadMemory<uintptr_t>(movementProxyComponent + 0x2d8); // UChildActorComponent::ChildActor
+        FVector global = ReadMemory<FVector>(movementProxyActor + 0x3b0);
+
+        return global + PlayerVelocity;
+    }
+    std::cout << "No valid ship found, returning player velocity." << std::endl;
+    return {0, 0, 0}; // Fallback, should not reach here
+}
+
 
 int main() {
-    Mouse mouse;
-    if (!mouse.isInitialized()) {
-        std::cerr << "Mouse initialization failed. Exiting." << std::endl;
-        return 1;
-    }
-    KeyboardMonitor keyboard;
-    if (!keyboard.isMonitoring()) {
-        std::cerr << "Could not start keyboard monitor. Exiting." << std::endl;
+    InputManager inputManager;
+
+    if (!inputManager.isVirtualMouseInitialized()) {
+        std::cerr << "Could not create virtual mouse. Aborting." << std::endl;
         return 1;
     }
 
@@ -296,7 +346,6 @@ int main() {
         }
     }
 
-    mouse.startMonitoring("Gaming");
 
     uintptr_t UWorld, GNames, PlayerController, LPawn, GameInstance, Persistentlevel, GameState, LocalPlayers, LocalPlayer;
     float WorldGravityZ = -981.0f;
@@ -304,7 +353,6 @@ int main() {
     int loopCount = -1;
     while (true) {
         loopCount++;
-        debugPrintMouseKeyPresses(mouse, initializeKeyNames());
         //////////////////////////////////////////////////////////////////////////////////////////////
         //================================Start of Game Data Loop Area==============================//
         //////////////////////////////////////////////////////////////////////////////////////////////
@@ -329,6 +377,9 @@ int main() {
 
         uintptr_t WorldSettings = ReadMemory<uintptr_t>(UWorld + 0x3A0);
         WorldGravityZ = ReadMemory<float>(WorldSettings + 0x548);
+
+        std::cout << "World Settings: " << std::hex << WorldSettings << std::dec << std::endl;
+        std::cout << "World Gravity Z: " << WorldGravityZ << std::endl;
 
         ptr CameraManager = ReadMemory<ptr>(PlayerController + Offsets::PlayerCameraManager);
         FCameraCacheEntry CameraCache = ReadMemory<FCameraCacheEntry>(CameraManager + Offsets::CameraCachePrivate);
@@ -419,10 +470,10 @@ int main() {
             if (entity.location.x == 0) continue;
 
             //------Weed out Local Player like things------
-            if (entity.location.Distance(CameraCache.POV.Location) < 100.f) {
-                // Skip entities that are too close to the player
-                continue;
-            }
+            // if (entity.location.Distance(CameraCache.POV.Location) < 100.f) {
+            //     // Skip entities that are too close to the player
+            //     continue;
+            // }
 
             //------Finding Name------
             auto actorID = ReadMemory<int>(PlayerPawn + Offsets::ActorID);
@@ -467,14 +518,12 @@ int main() {
 
                 if (CameraCache.POV.Location.Distance(entity.location) < 3000) entity.ship.onShip = true;
 
-                auto shipVel = ReadMemory<FVector>(PlayerPawn + 0x90);
-                std::cout << "Ship Vel: " << shipVel.x << " " << shipVel.y << " " << shipVel.z << std::endl;
+                // auto shipVel = ReadMemory<FVector>(PlayerPawn + 0x90);
+                // std::cout << "Ship Vel: " << shipVel.x << " " << shipVel.y << " " << shipVel.z << std::endl;
 
-                auto ShipMovementProxy = ReadMemory<uintptr_t>(PlayerPawn + 0x638);
-                // std::cout << "Movement Proxy: " << ShipMovementProxy << std::endl;
-                auto ShipMovement = ReadMemory<FVector>(ShipMovementProxy + 0x3B0 + 0x0);
-                // std::cout << "Ship Movement: " << ShipMovement.x << " " << ShipMovement.y << " " << ShipMovement.z << std::endl;
-
+                uintptr_t movementProxyComponent = ReadMemory<uintptr_t>(PlayerPawn + 0x638);
+                uintptr_t movementProxyActor = ReadMemory<uintptr_t>(movementProxyComponent + 0x2d8); // UChildActorComponent::ChildActor
+                entity.ship.moveInfo = ReadMemory<RepMovement>(movementProxyActor + 0x3b0);
 
                 //Get water amount
                 uintptr_t pShipInternalWaterComponent = ReadMemory<uintptr_t>(PlayerPawn + Offsets::ShipInternalWaterComponent);
@@ -506,8 +555,14 @@ int main() {
                 entity.mermade.displayName = "Mermade";
                 if (entity.name == "BP_LootStorage_Retrieve_C") entity.mermade.displayName = "Loot Mermade"; //Holds loot when in shrines
             } else if (entity.name == "BP_PlayerPirate_C"
-//) {
-            || entity.name == "BP_PhantomPawnBase_C" || entity.name == "BP_SkeletonPawnBase_C") { ///////////////////////////////////////////////////////////////////Skeleton/Phanton - temp///////////////////////////////////
+) {
+//            || entity.name == "BP_PhantomPawnBase_C" || entity.name == "BP_SkeletonPawnBase_C") { ///////////////////////////////////////////////////////////////////Skeleton/Phanton - temp///////////////////////////////////
+                uintptr_t rootComponentEnemy  = ReadMemory<uintptr_t>(PlayerPawn + Offsets::RootComponent);
+                FTransform componentToWorldEnemy = ReadMemory<FTransform>(rootComponentEnemy + 0x130);
+                entity.location = componentToWorldEnemy.Translation;
+                std::cout << "Entity Location: " << entity.location.x << ", " << entity.location.y << ", " << entity.location.z << std::endl;
+
+
                 entity.type = EntTypes::PLAYER;
                 entity.player.displayName = "Player";
 
@@ -533,6 +588,8 @@ int main() {
 
                 uintptr_t EntityCharacterMovement = ReadMemory<uintptr_t>(PlayerPawn + 0x420);
                 entity.player.velocity = ReadMemory<FVector>(EntityCharacterMovement + 0xCC);
+
+
 
                 playerEntities.push_back(entity); //used for aimbot.
             }
@@ -704,7 +761,7 @@ int main() {
                 Coords screenCoords = WorldToScreen({entity.location.x, entity.location.y, entity.location.z + 200.f}, CameraCache.POV, MonWidth, MonHeight);
                 int waterPercentage = static_cast<int>(entity.ship.WaterAmount * 100);
                 if (waterPercentage == 0 && entity.ship.holeCount == 0) {
-                    ctx->draw_text(screenCoords.x-30, screenCoords.y, entity.ship.displayName + "-" + std::to_string(entity.location.Distance(CameraCache.POV.Location)), COLOR::YELLOW);
+                    ctx->draw_text(screenCoords.x-30, screenCoords.y, entity.ship.displayName + "-" + std::to_string(static_cast<int>(entity.location.Distance(CameraCache.POV.Location)/100)*100), COLOR::YELLOW);
                 } else {
                     ctx->draw_text(screenCoords.x-30, screenCoords.y, entity.ship.displayName + " (" + std::to_string(entity.ship.holeCount) + " H - " + std::to_string(static_cast<int>(entity.ship.WaterAmount* 100)) + "%)", COLOR::YELLOW);
                 }
@@ -770,20 +827,6 @@ int main() {
         // uintptr_t ammoParamsPtr = weaponParamsPtr + 0x80;
         // float bulletSpeed = ReadMemory<float>(ammoParamsPtr + 0x10);
 
-        //LP Velocity /w ship
-        // FVector LPShipVelocity = ReadMemory<FVector>(LPawn + 0x430 + 0x2C);
-        // std::cout << "Ship Velocity: " << LPShipVelocity.x << ", " << LPShipVelocity.y << ", " << LPShipVelocity.z << std::endl;
-        FVector LPVelocityWithShip = LPVelocity;// + LPShipVelocity;
-        // std::cout << "LP Velocity: " << LPVelocityWithShip.x << ", " << LPVelocityWithShip.y << ", " << LPVelocityWithShip.z << std::endl;
-
-        //GetShipVelocityFromInternalIndex(0, shipEntities); //Debugging function, not used
-        int coordsOnScreenDist = 500;
-        FVector bestPos;
-
-        int closetPosDist = 1000;
-        FVector closestPos;
-
-
 
         // --- Find Best Targets Loop ---
 
@@ -797,10 +840,11 @@ int main() {
         bool is_best_pos_crosshair_valid = false;
         bool is_best_pos_world_valid = false;
 
+        FVector LPVelocityWithShip = GetPlayerGlobalVelocitySloppy(LPawn, shipEntities);
+
         for (int i = 0; i < playerEntities.size(); i++) {
             // --- Prediction (This part seems okay) ---
-            FVector EnemyShipVelocity = {0, 0, 0};
-            FVector EnemyVelocityWithShip = playerEntities[i].player.velocity + EnemyShipVelocity;
+            FVector EnemyVelocityWithShip = GetPlayerGlobalVelocitySloppy(playerEntities[i].pawn, shipEntities);
             FVector toAimCoords = {0, 0, 0};
             bool worked = GetPlayerAimPosition_NoGravity(CameraCache.POV.Location, LPVelocityWithShip, playerEntities[i].location, EnemyVelocityWithShip, bulletSpeed, toAimCoords);
 
@@ -836,8 +880,7 @@ int main() {
 
 
         // --- Aimbot Logic ---
-        if (mouse.isKeyDown(KEY_KP2)) {
-            std::cout << "Doing" << std::endl;
+        if (inputManager.isKeyDown(KEY_2)) {
             FVector final_aim_target;
             bool should_aim = false;
 
@@ -896,7 +939,7 @@ int main() {
                     }
 
                     // Move the mouse
-                    mouse.moveRelative(moveX, moveY);
+                    inputManager.moveMouseRelative(moveX, moveY);
                 }
             }
         }

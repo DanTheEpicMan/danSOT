@@ -5,6 +5,8 @@
 #include <signal.h>
 #include <vector>
 
+#include "../utils/LocalStructs.h"
+
 // Global variables
 pid_t ProcessId = 0;
 long BaseAddress = 0;
@@ -198,6 +200,7 @@ template FQuat ReadMemory<FQuat>(uintptr_t address);
 //For TRansform (bones, ship holes, etc.)
 template FTransform ReadMemory<FTransform>(uintptr_t address);
 template GUID ReadMemory<GUID>(uintptr_t address);
+template RepMovement ReadMemory<RepMovement>(uintptr_t address);
 
 template char ReadMemory<char>(uintptr_t address);
 template bool ReadMemory<bool>(uintptr_t address);

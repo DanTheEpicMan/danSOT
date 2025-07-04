@@ -59,6 +59,10 @@ struct BasicEntity {
     COLOR::Color color = COLOR::WHITE;
 };
 
+struct RepMovement {
+    FVector LinearVelocity, AngularVelocity, Location, Rotation;
+};
+
 typedef struct { //read everything from pawn
     float health;
 
@@ -71,6 +75,7 @@ typedef struct { //read everything from pawn
     bool onShip = false;
 
     //trajectory
+    RepMovement moveInfo;
 
 } Ship;
 
