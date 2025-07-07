@@ -2,6 +2,7 @@
 #include <complex>
 #include <vector>
 #define _USE_MATH_DEFINES
+#include <cfloat>
 #include <math.h>
 
 //TODO: Implement checks that the player is not outside of max distance for weapon
@@ -71,6 +72,219 @@ bool GetPlayerAimPosition_WithGravity(const FVector& localPlayerPos, const FVect
     outAimPosition = predictedPosition;
 
     return true;
+}
+
+// ///////////////////////////Ship Stuff////////////////////////////////////
+
+#include <complex>
+#include <cmath> // For std::sqrt, std::atan2f, std::cosf, std::sinf
+#include <limits> // For FLT_MAX
+
+void SolveQuartic(const std::complex<float> coefficients[5], std::complex<float> roots[4]) {
+	const std::complex<float> a = coefficients[4];
+	const std::complex<float> b = coefficients[3] / a;
+	const std::complex<float> c = coefficients[2] / a;
+	const std::complex<float> d = coefficients[1] / a;
+	const std::complex<float> e = coefficients[0] / a;
+	const std::complex<float> Q1 = c * c - 3.f * b * d + 12.f * e;
+	const std::complex<float> Q2 = 2.f * c * c * c - 9.f * b * c * d + 27.f * d * d + 27.f * b * b * e - 72.f * c * e;
+	const std::complex<float> Q3 = 8.f * b * c - 16.f * d - 2.f * b * b * b;
+	const std::complex<float> Q4 = 3.f * b * b - 8.f * c;
+	const std::complex<float> Q5 = std::pow(Q2 / 2.f + std::sqrt(Q2 * Q2 / 4.f - Q1 * Q1 * Q1), 1.f / 3.f);
+	const std::complex<float> Q6 = (Q1 / Q5 + Q5) / 3.f;
+	const std::complex<float> Q7 = 2.f * std::sqrt(Q4 / 12.f + Q6);
+	roots[0] = (-b - Q7 - std::sqrt(4.f * Q4 / 6.f - 4.f * Q6 - Q3 / Q7)) / 4.f;
+	roots[1] = (-b - Q7 + std::sqrt(4.f * Q4 / 6.f - 4.f * Q6 - Q3 / Q7)) / 4.f;
+	roots[2] = (-b + Q7 - std::sqrt(4.f * Q4 / 6.f - 4.f * Q6 + Q3 / Q7)) / 4.f;
+	roots[3] = (-b + Q7 + std::sqrt(4.f * Q4 / 6.f - 4.f * Q6 + Q3 / Q7)) / 4.f;
+}
+
+float time_func(float t, float K, float L, float M, float N, float r, float w, float theta, float S2)
+{
+	const float K2 = K * K;
+	const float L2 = L * L;
+	const float M2 = M * M;
+	const float N2 = N * N;
+	const float r2 = r * r;
+	return N2 * t * t * t * t + ((2 * M * N) - S2) * t * t + 2 * r * (K * cos(theta + (w * t)) + L * sin(theta + (w * t))) + K2 + L2 + M2 + r2;
+}
+
+float time_derivFunc(float t, float K, float L, float M, float N, float r, float w, float theta, float S2)
+{
+	const float N2 = N * N;
+	return 4 * N2 * t * t * t * t + 2 * ((2 * M * N) - S2) * t + 2 * r * w * (L * cos(theta + (w * t)) - K * sin(theta + (w + t)));
+    // FIX: The original had (w+t), it should be (w*t) to match time_func
+	//return 4 * N2 * t * t * t * t + 2 * ((2 * M * N) - S2) * t + 2 * r * w * (L * cos(theta + (w * t)) - K * sin(theta + (w * t)));
+}
+
+float newtonRaphson(float t, float K, float L, float M, float N, float r, float w, float theta, float S2)
+{
+	float h = time_func(t, K, L, M, N, r, w, theta, S2) / time_derivFunc(t, K, L, M, N, r, w, theta, S2);
+	int counter = 0;
+	while (abs(h) >= 0.01)
+	{
+		if (counter > 200)
+		{
+			break;
+		}
+		h = time_func(t, K, L, M, N, r, w, theta, S2) / time_derivFunc(t, K, L, M, N, r, w, theta, S2);
+		t = t - h;
+		counter++;
+	}
+	return t;
+}
+
+#include <math.h>
+
+FVector RotatorToVector(const FRotator& rotation) {
+	// Convert degrees to radians
+	float pitchRad = rotation.Pitch * (M_PI / 180.0f);
+	float yawRad = rotation.Yaw * (M_PI / 180.0f);
+
+	float cosPitch = cosf(pitchRad);
+	float sinPitch = sinf(pitchRad);
+	float cosYaw = cosf(yawRad);
+	float sinYaw = sinf(yawRad);
+
+	return FVector(
+		cosPitch * cosYaw,  // x component
+		cosPitch * sinYaw,  // y component
+		sinPitch            // z component
+	);
+}
+
+FRotator ToFRotator(FVector vec)
+{
+	FRotator rot;
+	float RADPI = (float)(180 / M_PI);
+	rot.Yaw = (float)(atan2f(vec.y, vec.x) * RADPI);
+	rot.Pitch = (float)atan2f(vec.z, sqrt((vec.x * vec.x) + (vec.y * vec.y))) * RADPI;
+	rot.Roll = 0;
+	return rot;
+}
+
+int AimAtStaticTarget(const FVector& oTargetPos, float fProjectileSpeed, float fProjectileGravityScalar, const FVector& oSourcePos, FRotator& oOutLow, FRotator& oOutHigh) {
+	const float gravity = 981.f * fProjectileGravityScalar;
+	const FVector diff(oTargetPos - oSourcePos);
+	const FVector oDiffXY(diff.x, diff.y, 0.0f);
+	const float fGroundDist = oDiffXY.Size();
+	const float s2 = fProjectileSpeed * fProjectileSpeed;
+	const float s4 = s2 * s2;
+	const float y = diff.z;
+	const float x = fGroundDist;
+	const float gx = gravity * x;
+	float root = s4 - (gravity * ((gx * x) + (2 * y * s2)));
+	if (root < 0)
+		return 0;
+	root = std::sqrtf(root);
+	const float fLowAngle = std::atan2f((s2 - root), gx);
+	const float fHighAngle = std::atan2f((s2 + root), gx);
+	int nSolutions = fLowAngle != fHighAngle ? 2 : 1;
+	const FVector oGroundDir(oDiffXY.unit());
+	oOutLow = ToFRotator(oGroundDir * std::cosf(fLowAngle) * fProjectileSpeed + FVector(0.f, 0.f, 1.f) * std::sinf(fLowAngle) * fProjectileSpeed);
+	if (nSolutions == 2)
+		oOutHigh = ToFRotator(oGroundDir * std::cosf(fHighAngle) * fProjectileSpeed + FVector(0.f, 0.f, 1.f) * std::sinf(fHighAngle) * fProjectileSpeed);
+	return nSolutions;
+}
+
+int AimAtMovingTarget(const FVector& oTargetPos, const FVector& oTargetVelocity, float fProjectileSpeed, float fProjectileGravityScalar, const FVector& oSourcePos, const FVector& oSourceVelocity, FRotator& oOutLow, FRotator& oOutHigh) {
+	const FVector v(oTargetVelocity - oSourceVelocity);
+	const FVector g(0.f, 0.f, -981.f * fProjectileGravityScalar);
+	const FVector p(oTargetPos - oSourcePos);
+
+	const float c4 = g.Dot(g) * 0.25f;
+	const float c3 = v.Dot(g);
+	const float c2 = p.Dot(g) + v.Dot(v) - (fProjectileSpeed * fProjectileSpeed);
+	const float c1 = 2.f * p.Dot(v);
+	const float c0 = p.Dot(p);
+
+	std::complex<float> pOutRoots[4];
+	const std::complex<float> pInCoeffs[5] = { c0, c1, c2, c3, c4 };
+	SolveQuartic(pInCoeffs, pOutRoots);
+	float fBestRoot = FLT_MAX;
+	for (int i = 0; i < 4; i++) {
+		if (pOutRoots[i].real() > 0.f && std::abs(pOutRoots[i].imag()) < 0.0001f && pOutRoots[i].real() < fBestRoot) {
+			fBestRoot = pOutRoots[i].real();
+		}
+	}
+	if (fBestRoot == FLT_MAX)
+		return 0;
+	const FVector oAimAt = oTargetPos + (v * fBestRoot);
+	return AimAtStaticTarget(oAimAt, fProjectileSpeed, fProjectileGravityScalar, oSourcePos, oOutLow, oOutHigh);
+}
+
+int AimAtShip(const FVector& oTargetPos, const FVector& oTargetVelocity, const FVector& oTargetAngularVelocity, const FVector& oSourcePos, const FVector& oSourceVelocity, float fProjectileSpeed, float fProjectileGravityScalar, FRotator& oOutLow, FRotator& oOutHigh)
+{
+	const FVector pPos = oSourcePos;
+	const float w = oTargetAngularVelocity.z;
+	if (w > -1.0 && w < 1.0)
+	{
+		int n = AimAtMovingTarget(oTargetPos, oTargetVelocity, fProjectileSpeed, fProjectileGravityScalar, pPos, oSourceVelocity, oOutLow, oOutHigh);
+		return n;
+	}
+
+	const FVector diff(oTargetPos - pPos);
+	auto w_pos = FVector(0, 0, w).Size();
+	auto w_rad = (w_pos * M_PI) / 180;
+
+	const float v_target_boat = FVector(oTargetVelocity.x, oTargetVelocity.y, 0.0f).Size();
+	const float r = (v_target_boat / w_rad) * 0.98;
+
+	float theta_rad = 0.f;
+	if (w < 0.f)
+	{
+		if (oTargetVelocity.x < 0.f)
+		{
+			theta_rad = (std::atan2f((-1 * oTargetVelocity.x), oTargetVelocity.y));
+		}
+		else if (oTargetVelocity.x > 0.f)
+		{
+			theta_rad = (std::atan2f((-1 * oTargetVelocity.x), oTargetVelocity.y)) + 2 * M_PI;
+		}
+	}
+	else if (w > 0.f)
+	{
+		theta_rad = (std::atan2f((-1 * oTargetVelocity.x), oTargetVelocity.y)) + M_PI;
+	}
+
+	const float K = diff.x - (r * cosf(theta_rad));
+	const float L = diff.y - (r * sinf(theta_rad));
+	const float M = diff.z;
+	const float N = (981.f * fProjectileGravityScalar) / 2;
+	const float S2 = fProjectileSpeed * fProjectileSpeed;
+
+	const FVector oDiffXY(diff.x, diff.y, 0.0f);
+	const float fGroundDist = oDiffXY.Size();
+
+	float t_init;
+	if (fGroundDist < 10000)
+	{
+		t_init = 4;
+	}
+	else if (fGroundDist < 25000)
+	{
+		t_init = 10;
+	}
+	else if (fGroundDist < 40000)
+	{
+		t_init = 15;
+	}
+	else
+	{
+		t_init = 20;
+	}
+
+	float t_best = newtonRaphson(t_init, K, L, M, N, r, w_rad, theta_rad, S2);
+
+	if (t_best < 0)
+	{
+		return 0;
+	}
+
+	const float At = oTargetPos.x - r * cos(theta_rad) + r * cos(theta_rad + (w_rad * t_best));
+	const float Bt = oTargetPos.y - r * sin(theta_rad) + r * sin(theta_rad + (w_rad * t_best));
+	const FVector oAimAt = FVector(At, Bt, oTargetPos.z);
+	return AimAtStaticTarget(oAimAt, fProjectileSpeed, fProjectileGravityScalar, oSourcePos, oOutLow, oOutHigh);
 }
 
 // // Your provided math functions, slightly adapted for the namespace.

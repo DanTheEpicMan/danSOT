@@ -29,3 +29,10 @@ bool GetPlayerAimPosition_WithGravity(
     float bulletSpeed, float gravityScale,
     FVector& outAimPosition
 );
+
+int AimAtShip(const FVector& oTargetPos, const FVector& oTargetVelocity, const FVector& oTargetAngularVelocity,
+    const FVector& oSourcePos, const FVector& oSourceVelocity,
+    float fProjectileSpeed, float fProjectileGravityScalar,
+    FRotator& oOutLow, FRotator& oOutHigh);
+
+FVector RotatorToVector(const FRotator& rotation);

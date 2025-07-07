@@ -6,6 +6,7 @@
 #include <sys/mman.h>
 
 //Local Headers
+#include <cfloat>
 #include <chrono>
 #include <linux/input-event-codes.h>
 
@@ -204,17 +205,17 @@ FVector GetPlayerGlobalVelocity(uintptr_t playerPawnAddress) {
 // }
 FVector GetShipVelocityByDistance(uintptr_t playerPawnAddress, std::vector<Entity> ships) {
     uintptr_t rootComponent  = ReadMemory<uintptr_t>(playerPawnAddress + Offsets::RootComponent);
-    std::cout << "[GetShipVelocityByDistance] rootComponent: 0x" << std::hex << rootComponent << std::dec << std::endl;
+    // std::cout << "[GetShipVelocityByDistance] rootComponent: 0x" << std::hex << rootComponent << std::dec << std::endl;
     FTransform componentToWorld = ReadMemory<FTransform>(rootComponent + 0x130);
     FVector Location = componentToWorld.Translation;
-    std::cout << "[GetShipVelocityByDistance] Player Location: (" << Location.x << ", " << Location.y << ", " << Location.z << ")" << std::endl;
+    // std::cout << "[GetShipVelocityByDistance] Player Location: (" << Location.x << ", " << Location.y << ", " << Location.z << ")" << std::endl;
 
     int shortestDistance = 3000; //Largest Dist to consider
     int shortestShipIndex = -1;
     FVector closestShipPos = {0, 0, 0};
     for (int i = 0; i < ships.size(); i++) {
         float dist = ships[i].location.Distance(Location);
-        std::cout << "[GetShipVelocityByDistance] Ship " << i << " at (" << ships[i].location.x << ", " << ships[i].location.y << ", " << ships[i].location.z << ") distance: " << dist << std::endl;
+        // std::cout << "[GetShipVelocityByDistance] Ship " << i << " at (" << ships[i].location.x << ", " << ships[i].location.y << ", " << ships[i].location.z << ") distance: " << dist << std::endl;
         if (dist < shortestDistance) {
             shortestShipIndex = i;
             shortestDistance = dist;
@@ -222,7 +223,7 @@ FVector GetShipVelocityByDistance(uintptr_t playerPawnAddress, std::vector<Entit
         }
     }
 
-    std::cout << "[GetShipVelocityByDistance] Found ship at index: " << shortestShipIndex << " with distance: " << shortestDistance << std::endl;
+    // std::cout << "[GetShipVelocityByDistance] Found ship at index: " << shortestShipIndex << " with distance: " << shortestDistance << std::endl;
 
     if (shortestDistance != 3000 && shortestShipIndex != -1) {
         uintptr_t movementProxyComponent = ReadMemory<uintptr_t>(ships[shortestShipIndex].pawn + 0x638);
@@ -238,7 +239,7 @@ FVector GetShipVelocityByDistance(uintptr_t playerPawnAddress, std::vector<Entit
     return {0, 0, 0}; // No ship found within distance
 }
 
-FVector GetPlayerGlobalVelocitySloppy(uintptr_t playerPawnAddress, std::vector<Entity> ships) {
+FVector GetPlayerGlobalVelocitySloppy(uintptr_t playerPawnAddress, std::vector<Entity> ships) { //could be improved by checking AthenaCameraComponent->IsInsideShipHull
     //Get Velocity
     uintptr_t characterMovement  = ReadMemory<uintptr_t>(playerPawnAddress + 0x420);
     FVector PlayerVelocity = ReadMemory<FVector>(characterMovement  + 0xCC);
@@ -375,11 +376,11 @@ int main() {
             continue;
         }
 
-        uintptr_t WorldSettings = ReadMemory<uintptr_t>(UWorld + 0x3A0);
-        WorldGravityZ = ReadMemory<float>(WorldSettings + 0x548);
-
-        std::cout << "World Settings: " << std::hex << WorldSettings << std::dec << std::endl;
-        std::cout << "World Gravity Z: " << WorldGravityZ << std::endl;
+        // uintptr_t WorldSettings = ReadMemory<uintptr_t>(UWorld + 0x3A0);
+        // WorldGravityZ = ReadMemory<float>(WorldSettings + 0x548);
+        //
+        // std::cout << "World Settings: " << std::hex << WorldSettings << std::dec << std::endl;
+        // std::cout << "World Gravity Z: " << WorldGravityZ << std::endl;
 
         ptr CameraManager = ReadMemory<ptr>(PlayerController + Offsets::PlayerCameraManager);
         FCameraCacheEntry CameraCache = ReadMemory<FCameraCacheEntry>(CameraManager + Offsets::CameraCachePrivate);
@@ -467,13 +468,7 @@ int main() {
             auto ActorRootComponent = ReadMemory<uintptr_t>(PlayerPawn + Offsets::RootComponent);
             if (ActorRootComponent == 0x0) continue;
             entity.location = ReadMemory<FVector>(ActorRootComponent + Offsets::RelativeLocation);
-            if (entity.location.x == 0) continue;
 
-            //------Weed out Local Player like things------
-            // if (entity.location.Distance(CameraCache.POV.Location) < 100.f) {
-            //     // Skip entities that are too close to the player
-            //     continue;
-            // }
 
             //------Finding Name------
             auto actorID = ReadMemory<int>(PlayerPawn + Offsets::ActorID);
@@ -488,9 +483,6 @@ int main() {
             }
             entity.name = name_text; // Store the name in the entity
 
-            // std::cout << "EntName: " << entity.name << std::endl;
-            // Coords entityScreenCoords = WorldToScreen(entity.location, CameraCache.POV, MonWidth, MonHeight);
-            // ctx->draw_text(entityScreenCoords.x, entityScreenCoords.y, entity.name.c_str(), COLOR::WHITE);
 
             if (entity.name == "NetProxy_C") { //Far off ship
                 entity.type = EntTypes::NETPROXYSHIP;
@@ -508,9 +500,6 @@ int main() {
                 if (entity.name == "BP_LargeShipTemplate_C" || entity.name == "BP_LargeShipNetProxy_C") entity.ship.displayName = "Galleon";
                 if (entity.name == "BP_AISmallShipTemplate_C" || entity.name == "BP_AISmallShipNetProxy_C") entity.ship.displayName = "AI Sloop";
                 if (entity.name == "BP_AILargeShipTemplate_C" || entity.name == "BP_AILargeShipNetProxy_C") entity.ship.displayName = "AI Galleon";
-
-
-                // std::cout << "Ship: " << PlayerPawn << std::endl;
 
                 if (CameraCache.POV.Location.Distance(entity.location) > 175000.f) { //If the ship is too far away, skip it
                     goto EndConditions; // Always wanted to use goto for something
@@ -560,7 +549,6 @@ int main() {
                 uintptr_t rootComponentEnemy  = ReadMemory<uintptr_t>(PlayerPawn + Offsets::RootComponent);
                 FTransform componentToWorldEnemy = ReadMemory<FTransform>(rootComponentEnemy + 0x130);
                 entity.location = componentToWorldEnemy.Translation;
-                std::cout << "Entity Location: " << entity.location.x << ", " << entity.location.y << ", " << entity.location.z << std::endl;
 
 
                 entity.type = EntTypes::PLAYER;
@@ -593,11 +581,14 @@ int main() {
 
                 playerEntities.push_back(entity); //used for aimbot.
             }
+            // else if (entity.name == "BP_Cannon_ShipPartMMC_C" || entity.name == "BP_Cannon_ShipPartMMC_b_C" || entity.name == "BP_SeaFort_Cannon_C" || entity.name == "BP_IslandCannon_C") {
+            //     cannonEntities.push_back(entity);
+            // }
             else if (entity.name == "BP_Rowboat_C" || entity.name == "BP_Rowboat_WithFrontCannon_C" || entity.name == "BP_Rowboat_WithFrontHarpoon_C") {
                 entity.type = EntTypes::ROWBOAT;
                 entity.rowboat.displayName = "Rowboat";
-                if (entity.name == "BP_Rowboat_WithFrontCannon_C") entity.rowboat.displayName += "Cannon ";
-                if (entity.name == "BP_Rowboat_WithFrontHarpoon_C") entity.rowboat.displayName += "Harpoon ";
+                if (entity.name == "BP_Rowboat_WithFrontCannon_C") entity.rowboat.displayName += " Cannon";
+                if (entity.name == "BP_Rowboat_WithFrontHarpoon_C") entity.rowboat.displayName += " Harpoon";
             } else if (entity.name == "BP_Storm_C") {
                 entity.type = EntTypes::STORM;
             }
@@ -746,6 +737,8 @@ int main() {
 
         ctx->begin_frame();
         ctx->draw_text(10, 15, "DanSOT", COLOR::WHITE);
+        ctx->draw_line(MonWidth/2 - 10, MonHeight/2, MonWidth/2 + 10, MonHeight/2, 2, COLOR::ORANGE);
+        ctx->draw_line(MonWidth/2, MonHeight/2 - 10, MonWidth/2, MonHeight/2 + 10, 2, COLOR::ORANGE);
 
         for (int i = 0; i < goodEntitiesCount; i++) {
             Entity& entity = goodEntities[i];
@@ -820,125 +813,259 @@ int main() {
 
         //Bullet speed
         uintptr_t WieldedItem = ReadMemory<uintptr_t>(LPawn + 0x870); //ProjectileWeapon, ProjectileWeaponParameters,
-        if (!WieldedItem) continue;
+        if (!WieldedItem) continue; /////////////////////////////////////////////////////////////////////////////////////////////////Very aimbot specific placement
         uintptr_t weaponParamsPtrPRE = ReadMemory<uintptr_t>(WieldedItem + 0x2d8);
-        float bulletSpeed = ReadMemory<float>(weaponParamsPtrPRE + 0x848 + 0x80 + 0x10);
-        // if (!weaponParamsPtr) continue;
-        // uintptr_t ammoParamsPtr = weaponParamsPtr + 0x80;
-        // float bulletSpeed = ReadMemory<float>(ammoParamsPtr + 0x10);
+        float bulletSpeed = ReadMemory<float>(weaponParamsPtrPRE + 0x848 + 0x80 + 0x10); //ProjectileWeapons->WeaponParameters + AmmoParams + Velocity
+        // float TimeBeforeApplyingGravity = ReadMemory<float>(weaponParamsPtrPRE + 0x848 + 0x80 +         0x14);
+        // float GravityFalloffTimeScalar = ReadMemory<float>(weaponParamsPtrPRE + 0x848 + 0x80 +          0x18);
+        // float DownForceVelocityFractionPerSecond = ReadMemory<float>(weaponParamsPtrPRE + 0x848 + 0x80+ 0x1C);
+        // float VelocityDampeningPerSecond = ReadMemory<float>(weaponParamsPtrPRE + 0x848 + 0x80 +        0x20);
+
+        //Getting used cannon
+        TArray<uintptr_t> LPChildren = ReadMemory<TArray<uintptr_t>>(LPawn + 0x150);
+        uintptr_t cannonActor = 0x0;
+        for (int i = 0; i < LPChildren.Length(); i++) {
+            uintptr_t ChildActor = ReadMemory<uintptr_t>(LPChildren.GetAddress() + (i * sizeof(uintptr_t)));
+            int ChildID = ReadMemory<int>(ChildActor + Offsets::ActorID);
+
+            //name
+            char interactable_name_cannon[68];
+            {
+                const auto chunk_offset = (ChildID / 0x4000) * 8;
+                const auto chunk_index_offset = (ChildID % 0x4000) * 8;
+                const auto name_chunk = ReadMemory<ptr>(GNames + chunk_offset);
+                const auto name_ptr = ReadMemory<ptr>(name_chunk + chunk_index_offset);
+                ReadMemoryBuffer(name_ptr + 0xC, interactable_name_cannon, sizeof(interactable_name_cannon));
+                interactable_name_cannon[67] = '\0';
+            }
+            std::string PotentialCannonName = interactable_name_cannon;
 
 
-        // --- Find Best Targets Loop ---
+            if (PotentialCannonName.find("IslandCannon") != std::string::npos || PotentialCannonName.find("Cannon_Ship") != std::string::npos) {
+                cannonActor = ChildActor;
+            }
+        }
 
-        // Initialize with a very large number
-        float closest_dist_from_crosshair = 99999.0f;
-        float closest_dist_in_world = 99999.0f;
+        if (cannonActor != 0x0) {
+            //Get cannon location
+            uintptr_t cannonSceneComponent = ReadMemory<uintptr_t>(cannonActor + Offsets::RootComponent);
+            FTransform cannonTransform = ReadMemory<FTransform>(cannonSceneComponent + 0x130);
+            FVector cannonLocation = cannonTransform.Translation;
+            FVector cannonVelocity = GetShipVelocityByDistance(LPawn, shipEntities); //Velocity
 
-        FVector best_pos_crosshair; // Target closest to the crosshair on screen
-        FVector best_pos_world;     // Target closest to you in 3D space
+            float projectileSpeed = ReadMemory<float>(cannonActor + 0x59C);
+            float gravityScalar = ReadMemory<float>(cannonActor + 0x5A0);
 
-        bool is_best_pos_crosshair_valid = false;
-        bool is_best_pos_world_valid = false;
+            uintptr_t LoadableComponent = ReadMemory<uintptr_t>(cannonActor + 0x538);
+            uintptr_t LoadedItem = ReadMemory<uintptr_t>(LoadableComponent + 0x178 + 0x8); // 1: LoadableComponent.LoadableComponentState and 2: LoadableComponentState.LoadedItem
+            if (LoadedItem != 0x0) {
+                char loadedItemName[68];
+                const auto chunk_offset = (ReadMemory<int>(LoadedItem + Offsets::ActorID) / 0x4000) * 8;
+                const auto chunk_index_offset = (ReadMemory<int>(LoadedItem + Offsets::ActorID) % 0x4000) * 8;
+                const auto name_chunk = ReadMemory<ptr>(GNames + chunk_offset);
+                const auto name_ptr = ReadMemory<ptr>(name_chunk + chunk_index_offset);
+                ReadMemoryBuffer(name_ptr + 0xC, loadedItemName, sizeof(loadedItemName));
+                loadedItemName[67] = '\0';
+
+                std::string loadedItemStr = loadedItemName;
+                if (loadedItemStr.find("Player") != std::string::npos) {
+                    std::cout << "Loaded Item: Player: " << loadedItemName << std::endl;
+                    gravityScalar = 1.3f;
+                } else if (loadedItemStr.find("chain_shot") != std::string::npos) {
+                    gravityScalar = 1.0f;
+                }
+            }
+
+
+            for (int j = 0; j < shipEntities.size(); j++) {
+                uintptr_t movementProxyComponent = ReadMemory<uintptr_t>(shipEntities[j].pawn + 0x638);
+                uintptr_t movementProxyActor = ReadMemory<uintptr_t>(movementProxyComponent + 0x2d8); // UChildActorComponent::ChildActor
+                FVector shipLinearVel = ReadMemory<FVector>(movementProxyActor +  0x3b0 + 0x0 + 0x0); //in subclass ShipMovementProxy, struct ReplicatedShipMovement, inside that struct at 0x0 is RepMovement
+                FVector shipAngularVel = ReadMemory<FVector>(movementProxyActor + 0x3b0 + 0x0 + 0xC); //AngularVelocity
+                FVector shipLocation = ReadMemory<FVector>(movementProxyActor +   0x3b0 + 0x0 + 0x18); //Location
+
+                FRotator out_low, out_high;
+                FVector AimAtPoint;
+
+                int solutions = AimAtShip(shipLocation, shipLinearVel, shipAngularVel, //enemy
+                    cannonLocation, cannonVelocity, //us
+                    projectileSpeed, gravityScalar, //other info
+                    out_low, out_high); //output`
+
+
+                FVector aimDirection = RotatorToVector(out_low);
+                FVector aimPointInSpace = cannonLocation + (aimDirection * 10000.f);
+
+                if (solutions > 0) {
+                    Coords AimAtCoords = WorldToScreen(aimPointInSpace, CameraCache.POV, MonWidth, MonHeight);
+                    ctx->draw_text(AimAtCoords.x - 3, AimAtCoords.y, "X", COLOR::RED);
+                }
+            }
+
+
+        }
+
+
+        // for (int i = 0; i < cannonEntities.size(); i++) {
+        //     std::cout << "Cannon Entity: " << cannonEntities[i].name << std::endl;
+        //     Entity& entity = cannonEntities[i];
+        //
+        //     float ServerPitch = ReadMemory<float>(entity.pawn + 0x7A0);
+        //     std::cout << "Server Pitch: " << ServerPitch << std::endl;
+        //
+        //     uintptr_t cannonSceneComponent = ReadMemory<uintptr_t>(entity.pawn + Offsets::RootComponent);
+        //     FTransform cannonTransform = ReadMemory<FTransform>(cannonSceneComponent + 0x130);
+        //     FVector cannonLocation = cannonTransform.Translation;
+        //     std::cout << "Cannon Location: " << cannonLocation.x << ", " << cannonLocation.y << ", " << cannonLocation.z << std::endl;
+        //
+        //     uintptr_t CannonOwner = ReadMemory<uintptr_t>(entity.pawn + 0x190); //Get the owner of the cannon
+        //     //read owner to get ship pawn
+        //
+        //     //display location
+        //     Coords screenCoords = WorldToScreen(cannonLocation, CameraCache.POV, MonWidth, MonHeight);
+        //     ctx->draw_text(screenCoords.x-30, screenCoords.y, entity.name, COLOR::YELLOW);
+        // }
+
+        // uintptr_t CameraManager2 = ReadMemory<uintptr_t>(LPawn + 0x430);
+        // std::cout << "CameraManager " << std::hex << CameraManager << std::dec << std::endl;
+        // uintptr_t ViewTargetActor = ReadMemory<uintptr_t>(CameraManager2 + 0xF70);
+        // std::cout << "ViewTargetActor: " << std::hex << ViewTargetActor << std::dec << std::endl;
+        //
+        // uintptr_t controlledPawn = ReadMemory<uintptr_t>(PlayerController + 0x410);
+        // std::cout << "Controlled Pawn: " << std::hex << controlledPawn << std::dec << std::endl;
+        // uintptr_t controlledID = ReadMemory<uintptr_t>(controlledPawn + Offsets::ActorID);
+        //
+        // char interactable_name_text[68];
+        // std::cout << "Cannon ID: " << controlledID << std::endl;
+        // {
+        //         const auto chunk_offset = (controlledID / 0x4000) * 8;
+        //         const auto chunk_index_offset = (controlledID % 0x4000) * 8;
+        //         const auto name_chunk = ReadMemory<ptr>(GNames + chunk_offset);
+        //         const auto name_ptr = ReadMemory<ptr>(name_chunk + chunk_index_offset);
+        //         ReadMemoryBuffer(name_ptr + 0xC, interactable_name_text, sizeof(interactable_name_text));
+        //         interactable_name_text[67] = '\0';
+        // }
+        // std::cout << "Interactable Name: " << interactable_name_text << std::endl;
+
+        // --- Aimbot Configuration (Tweak these values!) ---
+        const float AIMBOT_FOV = 250.0f;          // The radius in pixels from your crosshair to search for targets.
+        const float THREAT_RADIUS = 750.0f;       // World distance (e.g., in units/cm) for emergency 360-degree targeting.
+
+        // Dynamic Smoothing Parameters
+        const float MIN_SMOOTHNESS = 3.0f;        // Hardest tracking (for closest targets). Lower is faster.
+        const float MAX_SMOOTHNESS = 15.0f;       // Softest tracking (for farthest targets). Higher is smoother.
+        const float MIN_SMOOTH_DIST = 500.0f;     // World distance where MIN_SMOOTHNESS is fully applied.
+        const float MAX_SMOOTH_DIST = 8000.0f;    // World distance where MAX_SMOOTHNESS is fully applied.
+
+        // Deadzone
+        const float AIM_DEADZONE = 2.0f;          // Stop aiming when crosshair is this close (in pixels) to the target.
+
+
+        // --- Find Best Target Loop (Refactored) ---
+
+        // Initialize variables for the single best target
+        float best_target_score = FLT_MAX; // Use the maximum possible float value
+        FVector final_aim_target;
+        float final_target_world_distance = 0.0f;
+        bool target_found = false;
 
         FVector LPVelocityWithShip = GetPlayerGlobalVelocitySloppy(LPawn, shipEntities);
 
         for (int i = 0; i < playerEntities.size(); i++) {
-            // --- Prediction (This part seems okay) ---
+            // --- Prediction ---
             FVector EnemyVelocityWithShip = GetPlayerGlobalVelocitySloppy(playerEntities[i].pawn, shipEntities);
             FVector toAimCoords = {0, 0, 0};
             bool worked = GetPlayerAimPosition_NoGravity(CameraCache.POV.Location, LPVelocityWithShip, playerEntities[i].location, EnemyVelocityWithShip, bulletSpeed, toAimCoords);
 
-            // --- Convert to Screen Coordinates ---
+            // --- Convert to Screen Coords & Calculate Distances ---
             Coords screenCoords = WorldToScreen(toAimCoords, CameraCache.POV, MonWidth, MonHeight);
 
-            // Check if the target is actually on the screen before considering it
             if (screenCoords.x > 0 && screenCoords.x < MonWidth && screenCoords.y > 0 && screenCoords.y < MonHeight) {
-
-                // --- BUG FIX: Calculate distance from the CENTER of the screen ---
+                // Distance from crosshair (in pixels)
                 float dx = screenCoords.x - (MonWidth / 2.0f);
                 float dy = screenCoords.y - (MonHeight / 2.0f);
                 float dist_from_crosshair = sqrt(dx * dx + dy * dy);
 
-                if (dist_from_crosshair < closest_dist_from_crosshair) {
-                    closest_dist_from_crosshair = dist_from_crosshair;
-                    best_pos_crosshair = toAimCoords;
-                    is_best_pos_crosshair_valid = true;
-                }
-
-                // --- Find the physically closest target in the 3D world ---
+                // Distance from you (in world units)
                 float dist_in_world = toAimCoords.Distance(CameraCache.POV.Location);
-                if (dist_in_world < closest_dist_in_world) {
-                    closest_dist_in_world = dist_in_world;
-                    best_pos_world = toAimCoords;
-                    is_best_pos_world_valid = true;
+
+                // --- NEW: Scoring and Prioritization Logic ---
+                bool is_in_threat_radius = dist_in_world < THREAT_RADIUS;
+                bool is_in_fov = dist_from_crosshair < AIMBOT_FOV;
+
+                // Only consider this player if they are a threat or in our FOV
+                if (is_in_threat_radius || is_in_fov) {
+                    float current_score;
+
+                    if (is_in_threat_radius) {
+                        // If they are an immediate threat, their score IS their world distance.
+                        // This makes the physically closest person the highest priority.
+                        current_score = dist_in_world;
+                    } else {
+                        // If they are just in the FOV, their score is based on crosshair distance.
+                        // We add THREAT_RADIUS to ensure this score is ALWAYS higher (worse)
+                        // than any possible score from a target inside the threat radius.
+                        current_score = THREAT_RADIUS + dist_from_crosshair;
+                    }
+
+                    // If this target has a better score (lower is better), they are our new best target.
+                    if (current_score < best_target_score) {
+                        best_target_score = current_score;
+                        final_aim_target = toAimCoords;
+                        final_target_world_distance = dist_in_world;
+                        target_found = true;
+                    }
                 }
             }
-
             // This is just for drawing, so it's okay to do it for everyone
             ctx->draw_box(screenCoords.x - 5, screenCoords.y - 5, 10, 10, 1.0f, COLOR::GREEN);
         }
 
 
-        // --- Aimbot Logic ---
-        if (inputManager.isKeyDown(KEY_2)) {
-            FVector final_aim_target;
-            bool should_aim = false;
+        // --- Aimbot Logic (Refactored) ---
+        if (inputManager.isKeyDown(KEY_2) && target_found) {
+            Coords targetScreenCoords = WorldToScreen(final_aim_target, CameraCache.POV, MonWidth, MonHeight);
 
-            // --- TARGET PRIORITIZATION (from previous code) ---
-            if (is_best_pos_world_valid && closest_dist_in_world < 500.0f) {
-                final_aim_target = best_pos_world;
-                should_aim = true;
-            }
-            else if (is_best_pos_crosshair_valid) {
-                final_aim_target = best_pos_crosshair;
-                should_aim = true;
-            }
+            float deltaX = targetScreenCoords.x - (MonWidth / 2.0f);
+            float deltaY = targetScreenCoords.y - (MonHeight / 2.0f);
 
-            if (should_aim) {
-                Coords targetScreenCoords = WorldToScreen(final_aim_target, CameraCache.POV, MonWidth, MonHeight);
+            // Check if we are already inside the deadzone
+            if (std::abs(deltaX) > AIM_DEADZONE || std::abs(deltaY) > AIM_DEADZONE) {
 
-                // Calculate the precise floating-point distance from the crosshair
-                float deltaX = targetScreenCoords.x - (MonWidth / 2.0f);
-                float deltaY = targetScreenCoords.y - (MonHeight / 2.0f);
+                // --- NEW: Dynamic Smoothness Calculation ---
+                float dynamic_smoothness;
 
-                // --- NEW: Dead Zone Implementation ---
-                // If the target is within this many pixels of the crosshair, stop moving.
-                const float aim_deadzone = 5.0f;
-
-                if (std::abs(deltaX) < aim_deadzone) {
-                    deltaX = 0.0f;
+                if (final_target_world_distance <= MIN_SMOOTH_DIST) {
+                    dynamic_smoothness = MIN_SMOOTHNESS;
+                } else if (final_target_world_distance >= MAX_SMOOTH_DIST) {
+                    dynamic_smoothness = MAX_SMOOTHNESS;
+                } else {
+                    // Linearly interpolate the smoothness based on the target's distance.
+                    // Calculate how far into the range [MIN_SMOOTH_DIST, MAX_SMOOTH_DIST] the target is.
+                    float distance_ratio = (final_target_world_distance - MIN_SMOOTH_DIST) / (MAX_SMOOTH_DIST - MIN_SMOOTH_DIST);
+                    // Apply that ratio to the smoothness range.
+                    dynamic_smoothness = MIN_SMOOTHNESS + (MAX_SMOOTHNESS - MIN_SMOOTHNESS) * distance_ratio;
                 }
-                if (std::abs(deltaY) < aim_deadzone) {
-                    deltaY = 0.0f;
+                // --- End of Dynamic Smoothness ---
+
+                // Calculate mouse movement using the new dynamic smoothness
+                float moveX_float = deltaX / dynamic_smoothness;
+                float moveY_float = deltaY / dynamic_smoothness;
+
+                // Convert to integer for the mouse function
+                int moveX = static_cast<int>(moveX_float);
+                int moveY = static_cast<int>(moveY_float);
+
+                // Minimum Movement Logic (ensures the mouse always moves if needed)
+                if (moveX == 0 && std::abs(deltaX) > AIM_DEADZONE) {
+                    moveX = (deltaX > 0) ? 1 : -1;
+                }
+                if (moveY == 0 && std::abs(deltaY) > AIM_DEADZONE) {
+                    moveY = (deltaY > 0) ? 1 : -1;
                 }
 
-                // --- End of Dead Zone Logic ---
-
-
-                // Only proceed if there's still a delta after the dead zone check
-                if (deltaX != 0.0f || deltaY != 0.0f) {
-                    // Define a smoothing factor
-                    const float aim_smoothness = 20.0f;
-
-                    // Calculate the ideal (but potentially fractional) mouse movement
-                    float moveX_float = deltaX / aim_smoothness;
-                    float moveY_float = deltaY / aim_smoothness;
-
-                    // Convert to integer for the mouse.moveRelative function
-                    int moveX = static_cast<int>(moveX_float);
-                    int moveY = static_cast<int>(moveY_float);
-
-                    // --- Minimum Movement Logic (from previous code) ---
-                    // This now only triggers if the target is OUTSIDE the dead zone
-                    // but the smoothed movement rounded to zero.
-                    if (moveX == 0 && deltaX != 0.0f) {
-                        moveX = (deltaX > 0) ? 1 : -1;
-                    }
-                    if (moveY == 0 && deltaY != 0.0f) {
-                        moveY = (deltaY > 0) ? 1 : -1;
-                    }
-
-                    // Move the mouse
+                // Move the mouse
+                if (moveX != 0 || moveY != 0) {
                     inputManager.moveMouseRelative(moveX, moveY);
                 }
             }

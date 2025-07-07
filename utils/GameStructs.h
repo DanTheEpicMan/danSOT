@@ -94,6 +94,10 @@ public:
     FVector operator/(float number) const {
         return FVector(x / number, y / number, z / number);
     }
+
+    float operator|(const FVector& other) const {
+        return this->x * other.x + this->y * other.y + this->z * other.z;
+    }
 };
 
 struct FMinimalViewInfo
