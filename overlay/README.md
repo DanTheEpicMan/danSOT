@@ -2,6 +2,9 @@
 This is a special overlay that allows it ro run in a seperate process. This is usefull because it allows the overlay to run as non-root (needed in wayland).
 While our main application is running as root, the overlay can run as non-root. This allows us to read memory without being detected by the game.
 
+# While Programming
+During programming only drawing.h and shared_data.h need to be in the cheat process, everything else will compile itself into an app. This app will then be run separately and the cheat will communicate with the overlay.
+
 Example code from GPT:
 ```cpp
 //NOTE: Uses wrappers for underlying functions for drawing (ie theres a more manual way but this is cleaner and easier to use)

@@ -124,7 +124,26 @@ public:
        data->active_buffer_idx.store(write_idx, std::memory_order_release);
        write_buffer = nullptr;
    }
-   void draw_text(float x, float y, const std::string& text, COLOR::Color color) {
+    //centers text
+    void draw_text(float x, float y, const std::string& text, COLOR::Color color) {
+       if (x == -1 && y == -1) return;
+       if (!write_buffer || write_buffer->command_count >= MAX_COMMANDS) return;
+
+       float text_width = text.length() * 6.0f/*Average Character Width*/;
+
+       float adjusted_x = x - (text_width / 2.0f);
+
+       float adjusted_y = y + (14.0f/*Font Size*/  / 3.5f);
+
+       auto& cmd = write_buffer->commands[write_buffer->command_count++];
+       cmd.type = CMD_TEXT;
+       cmd.text.x = adjusted_x;
+       cmd.text.y = adjusted_y;
+       set_color(cmd.text, color);
+       strncpy(cmd.text.text, text.c_str(), MAX_TEXT_LEN - 1);
+       cmd.text.text[MAX_TEXT_LEN - 1] = '\0';
+   }
+    void draw_text_uncentered(float x, float y, const std::string& text, COLOR::Color color) {
        if (x == -1 && y == -1) return;
 
        if (!write_buffer || write_buffer->command_count >= MAX_COMMANDS) return;

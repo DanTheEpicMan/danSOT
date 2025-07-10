@@ -1,11 +1,5 @@
 #include "Memory.h"
 
-#include <iostream>
-#include <cstring>
-#include <signal.h>
-#include <vector>
-
-#include "../utils/LocalStructs.h"
 
 // Global variables
 pid_t ProcessId = 0;

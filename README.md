@@ -1,4 +1,5 @@
 # DanSOT
+Run: cmake .
 
 ## Linux
 Please not this cheat only works on Linux. Use Wayland for the overlay not being detected. Install steam through flatpak so reading memory will not be detedcted.

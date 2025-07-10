@@ -1,4 +1,4 @@
-//I lied, this also has some functions
+#pragma once
 
 #ifndef GAMESTRUCTS_H
 #define GAMESTRUCTS_H
@@ -324,6 +324,11 @@ struct GUID { //used for team/ship ID
     bool operator ==(const GUID& other) const {
         return A == other.A && B == other.B && C == other.C && D == other.D;
     }
+};
+
+//Not the full struct
+struct RepMovement {
+    FVector LinearVelocity, AngularVelocity, Location, Rotation;
 };
 
 // struct FString : private TArray<wchar_t>

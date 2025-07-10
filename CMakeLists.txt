@@ -23,14 +23,25 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 # This target ONLY includes main.cpp
 add_executable(danSOT
         main.cpp
-        utils/ProcessUtils.cpp
+        aimbot/CannonAimbot.h
+        aimbot/PlayerAimbot.h
+        aimbot/PlayerAimbot.cpp
+        esp/ESP.h
+        esp/ESP.cpp
+        memory/Memory.h
         memory/Memory.cpp
         overlay/drawing.h
-        utils/tables.h
-        hacks/Aimbot.cpp
-        hacks/Aimbot.h
-        hacks/InputManager.cpp
-        hacks/InputManager.h
+        overlay/shared_data.h
+        esp/tables.h
+        memory/ProcessUtils.h
+        memory/ProcessUtils.cpp
+        utils/GameData.h
+        utils/LocalData.h
+        IO/InputManager.h
+        IO/InputManager.cpp
+        config.h
+        offsets.h
+        utils/LocalFunctions.h
 )
 
 target_link_libraries(danSOT PRIVATE

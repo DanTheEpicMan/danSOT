@@ -7,7 +7,11 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <stdint.h>
-#include "../utils/GameStructs.h"
+#include <iostream>
+#include <cstring>
+#include <signal.h>
+#include <vector>
+#include "../utils/GameData.h"
 
 // Initialize memory access to the target process
 bool InitializeMemoryAccess();
