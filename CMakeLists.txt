@@ -24,6 +24,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 add_executable(danSOT
         main.cpp
         aimbot/CannonAimbot.h
+        aimbot/CannonAimbot.cpp
         aimbot/PlayerAimbot.h
         aimbot/PlayerAimbot.cpp
         esp/ESP.h

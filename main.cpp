@@ -154,6 +154,7 @@ int main() {
 
         esp.Run(LPawn, PlayerController, EnemyPlayers, TeamPlayers, EnemyShips, otherEntities, ctx);
         playerAimbot.Run(LPawn, PlayerController, EnemyPlayers, EnemyShips, ctx, &inputManager);
+        cannonAimbot.Run(GNames, LPawn, PlayerController, EnemyShips, EnemyPlayers);
 
         ctx->end_frame();
     }//while true

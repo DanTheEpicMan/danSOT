@@ -109,7 +109,7 @@ inline void drawX(DrawingContext *ctx, Coords coords, int size, COLOR::Color col
 inline FVector GetShipVelocityByDistance(uintptr_t playerPawnAddress, std::vector<Entity> ships) {
     uintptr_t rootComponent  = ReadMemory<uintptr_t>(playerPawnAddress + Offsets::RootComponent);
     // std::cout << "[GetShipVelocityByDistance] rootComponent: 0x" << std::hex << rootComponent << std::dec << std::endl;
-    FTransform componentToWorld = ReadMemory<FTransform>(rootComponent + 0x130);
+    FTransform componentToWorld = ReadMemory<FTransform>(rootComponent + Offsets::ComponentToWorld);
     FVector Location = componentToWorld.Translation;
     // std::cout << "[GetShipVelocityByDistance] Player Location: (" << Location.x << ", " << Location.y << ", " << Location.z << ")" << std::endl;
 
@@ -129,12 +129,10 @@ inline FVector GetShipVelocityByDistance(uintptr_t playerPawnAddress, std::vecto
     // std::cout << "[GetShipVelocityByDistance] Found ship at index: " << shortestShipIndex << " with distance: " << shortestDistance << std::endl;
 
     if (shortestDistance != 3000 && shortestShipIndex != -1) {
-        uintptr_t movementProxyComponent = ReadMemory<uintptr_t>(ships[shortestShipIndex].pawn + 0x638);
-        // std::cout << "[GetShipVelocityByDistance] movementProxyComponent: 0x" << std::hex << movementProxyComponent << std::dec << std::endl;
-        uintptr_t movementProxyActor = ReadMemory<uintptr_t>(movementProxyComponent + 0x2d8); // UChildActorComponent::ChildActor
-        // std::cout << "[GetShipVelocityByDistance] movementProxyActor: 0x" << std::hex << movementProxyActor << std::dec << std::endl;
-        FVector global = ReadMemory<FVector>(movementProxyActor + 0x3b0);
-        // std::cout << "[GetShipVelocityByDistance] Ship velocity: (" << global.x << ", " << global.y << ", " << global.z << ")" << std::endl;
+        uintptr_t movementProxyComponent = ReadMemory<uintptr_t>(ships[shortestShipIndex].pawn + Offsets::ShipMovementProxyComponent);
+        uintptr_t movementProxyActor = ReadMemory<uintptr_t>(movementProxyComponent + Offsets::ChildActor); // UChildActorComponent::ChildActor
+        FVector global = ReadMemory<FVector>(movementProxyActor + Offsets::ShipMovement +
+            Offsets::ReplicatedShipMovement_Movement + Offsets::LinearVelocity);
 
         return global;
     }
@@ -145,51 +143,41 @@ inline FVector GetShipVelocityByDistance(uintptr_t playerPawnAddress, std::vecto
 //it works but is hard to improve
 inline FVector GetPlayerGlobalVelocitySloppy(uintptr_t playerPawnAddress, std::vector<Entity> ships) { //could be improved by checking AthenaCameraComponent->IsInsideShipHull
     //Get Velocity
-    uintptr_t characterMovement  = ReadMemory<uintptr_t>(playerPawnAddress + 0x420);
-    FVector PlayerVelocity = ReadMemory<FVector>(characterMovement  + 0xCC);
+    uintptr_t characterMovement  = ReadMemory<uintptr_t>(playerPawnAddress + Offsets::CharacterMovement);
+    FVector PlayerVelocity = ReadMemory<FVector>(characterMovement  + Offsets::MovementComponent_Velocity);
 
     //Get Location
     FVector location = ReadMemory<FVector>(ReadMemory<ptr>(playerPawnAddress + Offsets::RootComponent) + Offsets::RelativeLocation);
 
     //Get BaseComponent
-    uintptr_t baseComponentAddr = ReadMemory<uintptr_t>(playerPawnAddress + 0x430 + 0x0);
+    uintptr_t baseComponentAddr = ReadMemory<uintptr_t>(playerPawnAddress + Offsets::BasedMovement + Offsets::MovementBase);
 
-    uintptr_t attachedParentComp = ReadMemory<uintptr_t>(baseComponentAddr + 0xD0); //USceneComponent //ATTACH_PARENT
-    uintptr_t childActor = ReadMemory<uintptr_t>(attachedParentComp + 0x2D8); // //UPrimitiveComponent, it's the first value //CHILD_ACTOR
-    uintptr_t parentActor = ReadMemory<uintptr_t>(childActor + 0x190); //PARENT_COMPONENT //0x190 + 0x0, points to actor
-    // std::cout << "Base Component Address: 0x" << std::hex << baseComponentAddr << std::dec << std::endl;
-    // std::cout << "Location from center: " << location.Distance(FVector(0, 0, 0)) << std::endl;
-    // std::cout << "Player Velocity: " << PlayerVelocity.x << ", " << PlayerVelocity.y << ", " << PlayerVelocity.z << std::endl;
-
-    // std::cout << "Child Actor Address: 0x" << std::hex << childActor << std::dec << std::endl;
-    // std::cout << "Parent Actor Address: 0x" << std::hex << parentActor << std::dec << std::endl;
+    uintptr_t attachedParentComp = ReadMemory<uintptr_t>(baseComponentAddr + Offsets::AttachParent);
+    uintptr_t childActor = ReadMemory<uintptr_t>(attachedParentComp + Offsets::ChildActor);
+    uintptr_t parentActor = ReadMemory<uintptr_t>(childActor + Offsets::ParentComponentActor + 0x0); //Reads struct were 0x0 points to actor
 
     if (baseComponentAddr == 0 && location.Distance({0, 0, 0}) < 3000 && PlayerVelocity.Distance(FVector(0, 0, 0)) < 1) { //On ladder or interacting with something on a ship
-        //Read by getting closest ship
-        // std::cout << "On ladder or interacting with something on a ship, returning ship velocity." << std::endl;
+        //Read by getting the closest ship;
         return GetShipVelocityByDistance(playerPawnAddress, ships) + PlayerVelocity; //Add player velocity to ship velocity
     } else if (baseComponentAddr == 0) { //in water
-        // std::cout << "In water, returning player velocity." << std::endl;
         return PlayerVelocity;
     } else if (childActor == 0) { //on island or specific part of ship
-        // std::cout << "On island, returning player velocity." << std::endl;
         return GetShipVelocityByDistance(playerPawnAddress, ships) + PlayerVelocity;
     } else if (childActor > 0x4931d0000000 && parentActor == 0) { //on stairs or on lower deck
-        // std::cout << "On stairs or on lower deck, returning ship velocity." << std::endl;
         return GetShipVelocityByDistance(playerPawnAddress, ships) + PlayerVelocity;
     } else { //standing on the ship normally
-        // std::cout << "Standing on the ship normally, calculating ship velocity." << std::endl;
         while (true) {
-            uintptr_t nextParentActor = ReadMemory<uintptr_t>(parentActor + 0x190); //PARENT_COMPONENT
+            uintptr_t nextParentActor = ReadMemory<uintptr_t>(parentActor + Offsets::ParentComponentActor);
             if (nextParentActor == 0 || nextParentActor == parentActor) {
                 break; // No more parents or reached the end of the chain
             }
             parentActor = nextParentActor;
         }
 
-        uintptr_t movementProxyComponent = ReadMemory<uintptr_t>(parentActor + 0x638);
-        uintptr_t movementProxyActor = ReadMemory<uintptr_t>(movementProxyComponent + 0x2d8); // UChildActorComponent::ChildActor
-        FVector global = ReadMemory<FVector>(movementProxyActor + 0x3b0);
+        uintptr_t movementProxyComponent = ReadMemory<uintptr_t>(parentActor + Offsets::ShipMovementProxyComponent);
+        uintptr_t movementProxyActor = ReadMemory<uintptr_t>(movementProxyComponent + Offsets::ChildActor);
+        FVector global = ReadMemory<FVector>(movementProxyActor + Offsets::ShipMovement +
+            Offsets::ReplicatedShipMovement_Movement + Offsets::LinearVelocity);
 
         return global + PlayerVelocity;
     }
