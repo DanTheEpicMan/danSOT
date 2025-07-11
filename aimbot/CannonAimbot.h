@@ -34,7 +34,7 @@ public:
         FVector ShipCoords, FVector ShipLinearVel, FVector ShipAngularVel);
 
     FVector QuarticPrediction(FCameraCacheEntry LPCam, FVector LPLinearVel,
-        float ProjectileSpeed, float ProjectileGravityScale, FVector ShipCoords, FVector ShipLinearVel)
+        float ProjectileSpeed, float ProjectileGravityScale, FVector ShipCoords, FVector ShipLinearVel);
 
 private:
     bool drawShipMiddleToAim = true;        //Draw were to aim to hit ship middle
