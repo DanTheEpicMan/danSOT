@@ -119,6 +119,7 @@ int main() {
             if (ActorRootComponent == 0x0) continue;
             ent.location = ReadMemory<FVector>(ActorRootComponent + Offsets::RelativeLocation);
 
+            //TODO: ID buring blade in this.
             if (ent.name.find("ShipTemplate_C") != std::string::npos ||
                 ent.name.find("ShipNetProxy_C") != std::string::npos ||
                 ent.name.find("AggressiveGhostShip") != std::string::npos) {
@@ -154,7 +155,7 @@ int main() {
 
         esp.Run(LPawn, PlayerController, EnemyPlayers, TeamPlayers, EnemyShips, otherEntities, ctx);
         playerAimbot.Run(LPawn, PlayerController, EnemyPlayers, EnemyShips, ctx, &inputManager);
-        cannonAimbot.Run(GNames, LPawn, PlayerController, EnemyShips, EnemyPlayers, ctx, &inputManager);
+        cannonAimbot.Run(GNames, LPawn, PlayerController, EnemyShips, EnemyPlayers, otherEntities, ctx, &inputManager);
 
         ctx->end_frame();
     }//while true

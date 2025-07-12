@@ -48,8 +48,8 @@ private:
     float THREAT_RADIUS = 750.0f;       // World distance (e.g., in units/cm) for emergency 360-degree targeting.
 
     // Dynamic Smoothing Parameters
-    float MIN_SMOOTHNESS = 10.0f;        // Hardest tracking (for closest targets). Lower is faster.
-    float MAX_SMOOTHNESS = 30.0f;       // Softest tracking (for farthest targets). Higher is smoother (and slower).
+    float MIN_SMOOTHNESS = 3.0f;        // Hardest tracking (for closest targets). Lower is faster.
+    float MAX_SMOOTHNESS = 15.0f;       // Softest tracking (for farthest targets). Higher is smoother (and slower).
     float MIN_SMOOTH_DIST = 500.0f;     // World distance where MIN_SMOOTHNESS is fully applied.
     float MAX_SMOOTH_DIST = 8000.0f;    // World distance where MAX_SMOOTHNESS is fully applied.
 

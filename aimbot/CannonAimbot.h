@@ -19,6 +19,7 @@ public:
         uintptr_t playerController,
         std::vector<Entity> ships,
         std::vector<Entity> Enemies,
+        std::vector<Entity> OtherEntities,
         DrawingContext *ctx, InputManager *inpMngr);
 
     uintptr_t GetCannonActor(uintptr_t LPawn, uintptr_t GNames);
@@ -27,11 +28,20 @@ public:
         float &outProjectileSpeed, float &outProjectileGravityScale);
 
     void GetShipInfo(uintptr_t ShipActor,
-        FVector &outShipLinearVel, FVector &outShipAngularVel);
+        FVector &outShipLinearVel, FVector &outShipAngularVel, FRotator &outShipInitialRotation);
+
+    void GetShipComponents(Entity ShipActor, std::vector<Entity> &OtherEntities,
+        std::vector<FVector> &outShipActiveHoles, std::vector<FVector> &outShipInactiveHoles,
+        std::vector<FVector> &outShipMasts, std::vector<FVector> &outCannonLocation, FVector &outShipWheel);
 
     FVector RotationPrediction(FCameraCacheEntry LPCam, FVector LPLinearVel,
         float ProjectileSpeed, float ProjectileGravityScale,
         FVector ShipCoords, FVector ShipLinearVel, FVector ShipAngularVel);
+
+    FVector RotationPredictionForPart(
+        FCameraCacheEntry LPCam, FVector LPLinearVel, float ProjectileSpeed, float ProjectileGravityScale,
+        FVector ShipCenterCoords, FVector ShipLinearVel, FVector ShipAngularVel, FRotator ShipInitialRotation,
+        FVector TargetPartGlobalCoords);
 
     FVector QuarticPrediction(FCameraCacheEntry LPCam, FVector LPLinearVel,
         float ProjectileSpeed, float ProjectileGravityScale, FVector ShipCoords, FVector ShipLinearVel);
@@ -47,7 +57,7 @@ private:
     bool drawCannonArk = true;              //Draw the arc of the cannonball
 
 private:
-    float lastLoadedProjectileSpeed = 0.0f, lastLoadedProjectileGravityScale = 0.0f;
+    float lastLoadedProjectileSpeed = 5700.0f, lastLoadedProjectileGravityScale = 0.791f;
 };
 
 
