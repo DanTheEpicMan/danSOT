@@ -1,5 +1,9 @@
 #ifndef CANNONAIMBOT_H
 #define CANNONAIMBOT_H
+
+#include <chrono> // For timing the prediction test
+#include <map>    // To store prediction tests per-ship
+
 #include <cstdint>
 #include <vector>
 #include "../overlay/drawing.h"
@@ -10,7 +14,15 @@
 #include "../config.h"
 #include <complex>
 
+
 class InputManager;
+
+// Holds the data for a single prediction vs. reality test
+struct PredictionTestSnapshot {
+    std::chrono::steady_clock::time_point snapshotTime; // The time the prediction was made
+    double predictionDuration;                          // How many seconds into the future we predicted
+    FVector predictedPosition;                          // The calculated future position (X, Y, Z)
+};
 
 class CannonAimbot {
 public:
@@ -34,6 +46,7 @@ public:
         std::vector<FVector> &outShipActiveHoles, std::vector<FVector> &outShipInactiveHoles,
         std::vector<FVector> &outShipMasts, std::vector<FVector> &outCannonLocation, FVector &outShipWheel);
 
+    // Prediction Functions
     FVector RotationPrediction(FCameraCacheEntry LPCam, FVector LPLinearVel,
         float ProjectileSpeed, float ProjectileGravityScale,
         FVector ShipCoords, FVector ShipLinearVel, FVector ShipAngularVel);
@@ -46,27 +59,10 @@ public:
     FVector QuarticPrediction(FCameraCacheEntry LPCam, FVector LPLinearVel,
         float ProjectileSpeed, float ProjectileGravityScale, FVector ShipCoords, FVector ShipLinearVel);
 
-private:
-    bool drawShipMiddleToAim = true;        //Draw were to aim to hit ship middle
-    bool drawShipHolesAim = true;           //Draw were to aim to hit ship holes
-    bool drawShipPotentialHolesAim = true;  //Draw were to aim to hit holes not yet created
-    bool drawShipMastAim = true;            //Draw were to aim to hit ship mast
-    bool drawPlayerAim = true;              //Draw were to aim to hit player
-    bool aimbotForHoles = true;             //Aims for you to nearest
-
-    bool drawCannonArk = true;              //Draw the arc of the cannonball
+    FVector StaticPrediction(FVector PlayerPos, FVector TargetPos, float ProjectileSpeed, float ProjectileGravityScale);
 
 private:
     float lastLoadedProjectileSpeed = 5700.0f, lastLoadedProjectileGravityScale = 0.791f;
 };
 
-
-
 #endif //CANNONAIMBOT_H
-
-/** Non newton raphson cannon prediction
- * Info Needed:
- * Self: If player is on cannon, projectile speed and gravity scale, camera position, linear velocity
- * Enemy: Position, linear velocity, angular velocity
-*/
-

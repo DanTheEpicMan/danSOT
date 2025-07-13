@@ -236,7 +236,7 @@ void ESP::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> E
             Entity &entity = otherEntities[i];
             std::string itemName = "";
             std::string distanceString = " - " + std::to_string((int)(CameraCache.POV.Location.Distance(entity.location) / 100.f /*m*/)) + "m";
-
+            if (entity.location.z == 0) continue;
 
             itemName = getDisplayName(entity.name, Tables::enemyEntity);
             if (this->drawAIEnemies && !itemName.empty()) {

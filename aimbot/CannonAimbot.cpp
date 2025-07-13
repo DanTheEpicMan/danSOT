@@ -5,22 +5,219 @@
 #include <limits>
 #include <algorithm>
 #include <cstdio> // For printf debugging
+#include <optional>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
+#include <cfloat>
+#include <complex>
+void SolveQuartic(const std::complex<float> coefficients[5], std::complex<float> roots[4]) {
+	const std::complex<float> a = coefficients[4];
+	const std::complex<float> b = coefficients[3] / a;
+	const std::complex<float> c = coefficients[2] / a;
+	const std::complex<float> d = coefficients[1] / a;
+	const std::complex<float> e = coefficients[0] / a;
+	const std::complex<float> Q1 = c * c - 3.f * b * d + 12.f * e;
+	const std::complex<float> Q2 = 2.f * c * c * c - 9.f * b * c * d + 27.f * d * d + 27.f * b * b * e - 72.f * c * e;
+	const std::complex<float> Q3 = 8.f * b * c - 16.f * d - 2.f * b * b * b;
+	const std::complex<float> Q4 = 3.f * b * b - 8.f * c;
+	const std::complex<float> Q5 = std::pow(Q2 / 2.f + std::sqrt(Q2 * Q2 / 4.f - Q1 * Q1 * Q1), 1.f / 3.f);
+	const std::complex<float> Q6 = (Q1 / Q5 + Q5) / 3.f;
+	const std::complex<float> Q7 = 2.f * std::sqrt(Q4 / 12.f + Q6);
+	roots[0] = (-b - Q7 - std::sqrt(4.f * Q4 / 6.f - 4.f * Q6 - Q3 / Q7)) / 4.f;
+	roots[1] = (-b - Q7 + std::sqrt(4.f * Q4 / 6.f - 4.f * Q6 - Q3 / Q7)) / 4.f;
+	roots[2] = (-b + Q7 - std::sqrt(4.f * Q4 / 6.f - 4.f * Q6 + Q3 / Q7)) / 4.f;
+	roots[3] = (-b + Q7 + std::sqrt(4.f * Q4 / 6.f - 4.f * Q6 + Q3 / Q7)) / 4.f;
+}
+
+#include <math.h>
+
+FRotator ToFRotator(FVector vec)
+{
+	FRotator rot;
+	float RADPI = (float)(180 / M_PI);
+	rot.Yaw = (float)(atan2f(vec.y, vec.x) * RADPI);
+	rot.Pitch = (float)atan2f(vec.z, sqrt((vec.x * vec.x) + (vec.y * vec.y))) * RADPI;
+	rot.Roll = 0;
+	return rot;
+}
+
+int AimAtStaticTarget(const FVector& oTargetPos, float fProjectileSpeed, float fProjectileGravityScalar, const FVector& oSourcePos, FRotator& oOutLow, FRotator& oOutHigh) {
+	const float gravity = 981.f * fProjectileGravityScalar;
+	const FVector diff(oTargetPos - oSourcePos);
+	const FVector oDiffXY(diff.x, diff.y, 0.0f);
+	const float fGroundDist = oDiffXY.Size();
+	const float s2 = fProjectileSpeed * fProjectileSpeed;
+	const float s4 = s2 * s2;
+	const float y = diff.z;
+	const float x = fGroundDist;
+	const float gx = gravity * x;
+	float root = s4 - (gravity * ((gx * x) + (2 * y * s2)));
+	if (root < 0)
+		return 0;
+	root = std::sqrtf(root);
+	const float fLowAngle = std::atan2f((s2 - root), gx);
+	const float fHighAngle = std::atan2f((s2 + root), gx);
+	int nSolutions = fLowAngle != fHighAngle ? 2 : 1;
+	const FVector oGroundDir(oDiffXY.unit());
+	oOutLow = ToFRotator(oGroundDir * std::cosf(fLowAngle) * fProjectileSpeed + FVector(0.f, 0.f, 1.f) * std::sinf(fLowAngle) * fProjectileSpeed);
+	if (nSolutions == 2)
+		oOutHigh = ToFRotator(oGroundDir * std::cosf(fHighAngle) * fProjectileSpeed + FVector(0.f, 0.f, 1.f) * std::sinf(fHighAngle) * fProjectileSpeed);
+	return nSolutions;
+}
+
+#include <limits>
+int AimAtMovingTarget(const FVector& oTargetPos, const FVector& oTargetVelocity, float fProjectileSpeed, float fProjectileGravityScalar, const FVector& oSourcePos, const FVector& oSourceVelocity, FRotator& oOutLow, FRotator& oOutHigh) {
+	const FVector v(oTargetVelocity - oSourceVelocity);
+	const FVector g(0.f, 0.f, -981.f * fProjectileGravityScalar);
+	const FVector p(oTargetPos - oSourcePos);
+	const float c4 = g | g * 0.25f;
+	const float c3 = v | g;
+	const float c2 = (p | g) + (v | v) - (fProjectileSpeed * fProjectileSpeed);
+	const float c1 = 2.f * (p | v);
+	const float c0 = p | p;
+	std::complex<float> pOutRoots[4];
+	std::complex<float> pInCoeffs[5] = { c0, c1, c2, c3, c4 };
+	SolveQuartic(pInCoeffs, pOutRoots);
+	float fBestRoot = FLT_MAX;
+	for (int i = 0; i < 4; i++) {
+		if (pOutRoots[i].real() > 0.f && std::abs(pOutRoots[i].imag()) < 0.0001f && pOutRoots[i].real() < fBestRoot) {
+			fBestRoot = pOutRoots[i].real();
+		}
+	}
+	if (fBestRoot == FLT_MAX)
+		return 0;
+	const FVector oAimAt = oTargetPos + (v * fBestRoot);
+	return AimAtStaticTarget(oAimAt, fProjectileSpeed, fProjectileGravityScalar, oSourcePos, oOutLow, oOutHigh);
+}
+
+float time_func(float t, float K, float L, float M, float N, float r, float w, float theta, float S2)
+{
+	const float K2 = K * K;
+	const float L2 = L * L;
+	const float M2 = M * M;
+	const float N2 = N * N;
+	const float r2 = r * r;
+	return N2 * t * t * t * t + ((2 * M * N) - S2) * t * t + 2 * r * (K * cos(theta + (w * t)) + L * sin(theta + (w * t))) + K2 + L2 + M2 + r2;
+}
+
+float time_derivFunc(float t, float K, float L, float M, float N, float r, float w, float theta, float S2)
+{
+	const float N2 = N * N;
+	return 4 * N2 * t * t * t * t + 2 * ((2 * M * N) - S2) * t + 2 * r * w * (L * cos(theta + (w * t)) - K * sin(theta + (w + t)));
+}
+
+float newtonRaphson(float t, float K, float L, float M, float N, float r, float w, float theta, float S2)
+{
+	float h = time_func(t, K, L, M, N, r, w, theta, S2) / time_derivFunc(t, K, L, M, N, r, w, theta, S2);
+	int counter = 0;
+	while (abs(h) >= 0.01)
+	{
+		if (counter > 200)
+		{
+			break;
+		}
+		h = time_func(t, K, L, M, N, r, w, theta, S2) / time_derivFunc(t, K, L, M, N, r, w, theta, S2);
+		t = t - h;
+		counter++;
+	}
+	return t;
+}
+
+int AimAtShip(const FVector& oTargetPos, const FVector& oTargetVelocity, const FVector& oTargetAngularVelocity, const FVector& oSourcePos, const FVector& oSourceVelocity, float fProjectileSpeed, float fProjectileGravityScalar, FRotator& oOutLow, FRotator& oOutHigh)
+{
+	const FVector pPos = oSourcePos;
+	const float w = oTargetAngularVelocity.z;
+	if (w > -1.0 && w < 1.0)
+	{
+		int n = AimAtMovingTarget(oTargetPos, oTargetVelocity, fProjectileSpeed, fProjectileGravityScalar, pPos, oSourceVelocity, oOutLow, oOutHigh);
+		return n;
+	}
+
+	const FVector diff(oTargetPos - pPos);
+	auto w_pos = FVector(0, 0, w).Size();
+	auto w_rad = (w_pos * M_PI) / 180;
+
+
+	const float v_target_boat = FVector(oTargetVelocity.x, oTargetVelocity.y, 0.0f).Size();
+	const float r = (v_target_boat / w_rad) * 0.98;
+
+	float theta_rad = 0.f;
+	if (w < 0.f)
+	{
+		if (oTargetVelocity.x < 0.f)
+		{
+			theta_rad = (std::atan2f((-1 * oTargetVelocity.x), oTargetVelocity.y));
+		}
+		else if (oTargetVelocity.x > 0.f)
+		{
+			theta_rad = (std::atan2f((-1 * oTargetVelocity.x), oTargetVelocity.y)) + 2 * M_PI;
+		}
+	}
+	else if (w > 0.f)
+	{
+		theta_rad = (std::atan2f((-1 * oTargetVelocity.x), oTargetVelocity.y)) + M_PI;
+	}
+
+	const float K = diff.x - (r * cosf(theta_rad));
+	const float L = diff.y - (r * sinf(theta_rad));
+	const float M = diff.z;
+	const float N = (981.f * fProjectileGravityScalar) / 2;
+	const float S2 = fProjectileSpeed * fProjectileSpeed;
+
+	const FVector oDiffXY(diff.x, diff.y, 0.0f);
+	const float fGroundDist = oDiffXY.Size();
+
+	float t_init;
+	if (fGroundDist < 10000)
+	{
+		t_init = 4;
+	}
+	else if (fGroundDist < 25000)
+	{
+		t_init = 10;
+	}
+	else if (fGroundDist < 40000)
+	{
+		t_init = 15;
+	}
+	else
+	{
+		t_init = 20;
+	}
+
+	float t_best = newtonRaphson(t_init, K, L, M, N, r, w_rad, theta_rad, S2);
+
+	if (t_best < 0)
+	{
+		return 0;
+	}
+
+	const float At = oTargetPos.x - r * cos(theta_rad) + r * cos(theta_rad + (w_rad * t_best));
+	const float Bt = oTargetPos.y - r * sin(theta_rad) + r * sin(theta_rad + (w_rad * t_best));
+	const FVector oAimAt = FVector(At, Bt, oTargetPos.z);
+	return AimAtStaticTarget(oAimAt, fProjectileSpeed, fProjectileGravityScalar, oSourcePos, oOutLow, oOutHigh);
+}
+
+FVector RotatorToVector(const FRotator& Rot) {
+	// Convert degrees to radians
+	const float pitchRad = Rot.Pitch * (M_PI / 180.0f);
+	const float yawRad = Rot.Yaw * (M_PI / 180.0f);
+
+	const float sp = sinf(pitchRad);
+	const float cp = cosf(pitchRad);
+	const float sy = sinf(yawRad);
+	const float cy = cosf(yawRad);
+
+	return FVector(cp * cy, cp * sy, sp);
+}
 
 void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> ships, std::vector<Entity> Enemies, std::vector<Entity> OtherEntities, DrawingContext *ctx, InputManager *inpMngr) {
 
-    // for (int i = 0; i < OtherEntities.size(); i++) {
-    //     //print name:
-    //     Entity &ent = OtherEntities[i];
-    //     std::cout << ": " << i << ": " << ent.name << std::endl;
-    // }
-
     uintptr_t cannonActor = GetCannonActor(LPawn, GNames);
-    if (cannonActor == 0x0) return;
+    //if (cannonActor == 0x0) return;
 
     float projectileSpeed, projectileGravityScale;
     GetProjectileInfo(cannonActor, GNames, projectileSpeed, projectileGravityScale);
@@ -55,6 +252,31 @@ void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerContro
             }
         }
 
+    	FRotator AimLow, AimHigh;
+    	int solutions = AimAtShip(shipCoords, shipLinearVel, shipAngularVel, CameraCache.POV.Location, localPlayerVelocity, projectileSpeed, projectileGravityScale, AimLow, AimHigh);
+
+    	// Use the rotator from the function
+    	if (solutions > 0) {
+    		// 1. Get the starting point (your camera)
+    		FVector startPoint = CameraCache.POV.Location;
+
+    		// 2. Convert the rotator to a normalized direction vector
+    		FVector aimDirection = RotatorToVector(AimLow); // Using the low angle solution
+
+    		// 3. Get the distance to the target ship. This is a good distance to use.
+    		float distanceToShip = (shipCoords - startPoint).Size();
+
+    		// 4. Calculate the aim point in the world
+    		FVector worldAimPoint = startPoint + (aimDirection * distanceToShip);
+
+    		// 5. Project that world point to the screen
+    		Coords screenPos = WorldToScreen(worldAimPoint, CameraInfo, MonWidth, MonHeight);
+    		if (screenPos.x > 1 && screenPos.y > 1 && screenPos.x < MonWidth && screenPos.y < MonHeight) {
+    			// Draw a yellow circle to represent the aim direction
+    			drawX(ctx, screenPos, 5, COLOR::MAGENTA);
+    		}
+    	}
+
         std::vector<FVector> shipActiveHoles, shipInactiveHoles, shipMasts, cannonLocations;
         FVector shipWheel;
         GetShipComponents(ship, OtherEntities, shipActiveHoles, shipInactiveHoles, shipMasts, cannonLocations, shipWheel);
@@ -77,7 +299,7 @@ void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerContro
                 }
             }
         }
-
+        //TODO: FIX THE WAY YOU GET LOCATION
         for (const auto& mast : shipMasts) {
             FVector aimPoint = RotationPredictionForPart(CameraCache, localPlayerVelocity, projectileSpeed, projectileGravityScale, shipCoords, shipLinearVel, shipAngularVel, shipInitialRotation, mast);
             if (aimPoint.x != 0.f || aimPoint.y != 0.f || aimPoint.z != 0.f) {
@@ -88,7 +310,7 @@ void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerContro
                 }
             }
         }
-
+        //TODO: FIX THE WAY YOU GET LOCATION
         for (const auto& cannon : cannonLocations) {
             FVector aimPoint = RotationPredictionForPart(CameraCache, localPlayerVelocity, projectileSpeed, projectileGravityScale, shipCoords, shipLinearVel, shipAngularVel, shipInitialRotation, cannon);
             if (aimPoint.x != 0.f || aimPoint.y != 0.f || aimPoint.z != 0.f) {
@@ -98,7 +320,7 @@ void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerContro
                 }
             }
         }
-
+        //TODO; FIX THE WAY YOU GET LOCATION
         FVector aimPoint = RotationPredictionForPart(CameraCache, localPlayerVelocity, projectileSpeed, projectileGravityScale, shipCoords, shipLinearVel, shipAngularVel, shipInitialRotation, shipWheel);
         if (aimPoint.x != 0.f || aimPoint.y != 0.f || aimPoint.z != 0.f) {
             Coords screenPos = WorldToScreen(aimPoint, CameraInfo, MonWidth, MonHeight);
@@ -108,6 +330,7 @@ void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerContro
         }
 
 
+    	//TODO: CHANGE TO USE STATICPREDICTION FUNCTION
         shipLinearVel = {0, 0, 0};
         shipAngularVel = {0, 0, 0};
         localPlayerVelocity = {0, 0, 0};
@@ -166,7 +389,7 @@ void solve_quartic(const std::vector<std::complex<double>>& coeffs, std::vector<
 }
 
 double get_2d_distance(FVector a, FVector b) {
-    return std::sqrt(std::pow(a.x - b.x, 2) + std::pow(a.y - b.y, 2));
+	return std::sqrt(std::pow(a.x - b.x, 2) + std::pow(a.y - b.y, 2));
 }
 
 double get_launch_angle_tan(FVector cannon_coords, FVector target_coords, double gravity, double projectile_speed) {
@@ -534,4 +757,73 @@ void CannonAimbot::GetShipComponents(Entity ShipActor, std::vector<Entity> &Othe
         }
     }
 
+}
+
+
+FVector CannonAimbot::StaticPrediction(FVector PlayerPos, FVector TargetPos, float ProjectileSpeed, float ProjectileGravityScale) {
+    // 1. --- SETUP ---
+    double distance = get_2d_distance(PlayerPos, TargetPos);
+    // Optional: Filter out targets that are too close or too far.
+    if (distance <= 100.0 || distance >= 50000.0) {
+        return {0, 0, 0};
+    }
+
+    const double g_scalar = static_cast<double>(ProjectileGravityScale * 981.0f);
+    const FVector gravity_vec = {0.0, 0.0, static_cast<float>(-g_scalar)};
+    const FVector relative_pos = TargetPos - PlayerPos;
+
+    // 2. --- SOLVE FOR TIME OF FLIGHT (t) ---
+    // The physics equation simplifies to a quadratic equation in terms of t² (time squared).
+    // Let y = t², the equation is: Ay² + By + C = 0
+    // See the math explanation below for the derivation of these coefficients.
+
+    // dot(gravity_vec, gravity_vec) is just g²
+	auto dot = [](const FVector& a, const FVector& b) {return a.x*b.x+a.y*b.y+a.z*b.z;};
+    double A = 0.25 * dot(gravity_vec, gravity_vec);
+    // Note: The correct B coefficient is -(dot(relative_pos, gravity_vec) + ProjectileSpeed²).
+    // The original code may have used a different sign convention or simplification.
+    // This version uses the physically derived formula for a robust solution.
+    double B = -(dot(relative_pos, gravity_vec) + (ProjectileSpeed * ProjectileSpeed));
+    // dot(relative_pos, relative_pos) is the squared 3D distance to the target.
+    double C = dot(relative_pos, relative_pos);
+
+    // Solve the quadratic equation for y = t²
+    double discriminant = B * B - 4 * A * C;
+    if (discriminant < 0) {
+        // No real solutions for t², meaning it's impossible to hit the target (e.g., out of range).
+        return {0, 0, 0};
+    }
+
+    double sqrt_discriminant = std::sqrt(discriminant);
+    double y1 = (-B + sqrt_discriminant) / (2 * A);
+    double y2 = (-B - sqrt_discriminant) / (2 * A);
+
+    // Find the smallest, positive, real time of flight 't'.
+    // We need y (which is t²) to be positive.
+    double time_of_flight = -1.0;
+    if (y1 > 0) {
+        time_of_flight = std::sqrt(y1);
+    }
+    if (y2 > 0) {
+        double t2 = std::sqrt(y2);
+        if (time_of_flight < 0 || t2 < time_of_flight) {
+            time_of_flight = t2;
+        }
+    }
+
+    if (time_of_flight <= 0) {
+        // No positive time solution found.
+        return {0, 0, 0};
+    }
+
+    // 3. --- CALCULATE AIM POINT ---
+    // Now that we have the time 't', we can calculate the initial velocity vector
+    // required for the projectile to land at the target's position.
+    // V_launch = (TargetPos - PlayerPos - 0.5 * g * t²) / t
+    FVector launch_velocity = (relative_pos - gravity_vec * 0.5 * time_of_flight * time_of_flight) / time_of_flight;
+
+    // The function should return a point to aim at. By returning a point along the
+    // required launch velocity vector, the cannon will aim in the correct direction.
+    // PlayerPos + launch_velocity gives a point in the correct direction from the player.
+    return PlayerPos + launch_velocity;
 }
