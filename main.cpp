@@ -86,7 +86,11 @@ int main() {
     }
     std::cout << "Found base address: 0x" << std::hex << BaseAddress << std::dec << std::endl;
 
+    int loopIndex = 0;
     while (true) {
+        loopIndex++;
+        std::cout << "LN: " << loopIndex << std::endl;
+
         ptr UWorld = ReadMemory<ptr>(BaseAddress + Offsets::UWorld);
         ptr GameState = ReadMemory<ptr>(UWorld + Offsets::GameState);
         ptr PersistentLevel = ReadMemory<ptr>(UWorld + Offsets::PresistentLevel);

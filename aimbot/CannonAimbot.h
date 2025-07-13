@@ -1,9 +1,6 @@
 #ifndef CANNONAIMBOT_H
 #define CANNONAIMBOT_H
 
-#include <chrono> // For timing the prediction test
-#include <map>    // To store prediction tests per-ship
-
 #include <cstdint>
 #include <vector>
 #include "../overlay/drawing.h"
@@ -14,14 +11,13 @@
 #include "../config.h"
 #include <complex>
 
-
 class InputManager;
 
-// Holds the data for a single prediction vs. reality test
-struct PredictionTestSnapshot {
-    std::chrono::steady_clock::time_point snapshotTime; // The time the prediction was made
-    double predictionDuration;                          // How many seconds into the future we predicted
-    FVector predictedPosition;                          // The calculated future position (X, Y, Z)
+// A struct to hold the results of a prediction calculation
+struct AimSolution {
+    bool success;
+    FVector impactPoint;
+    float timeOfFlight;
 };
 
 class CannonAimbot {
@@ -34,34 +30,20 @@ public:
         std::vector<Entity> OtherEntities,
         DrawingContext *ctx, InputManager *inpMngr);
 
-    uintptr_t GetCannonActor(uintptr_t LPawn, uintptr_t GNames);
-
-    void GetProjectileInfo(uintptr_t CannonActor, uintptr_t GNames,
-        float &outProjectileSpeed, float &outProjectileGravityScale);
-
-    void GetShipInfo(uintptr_t ShipActor,
-        FVector &outShipLinearVel, FVector &outShipAngularVel, FRotator &outShipInitialRotation);
-
-    void GetShipComponents(Entity ShipActor, std::vector<Entity> &OtherEntities,
-        std::vector<FVector> &outShipActiveHoles, std::vector<FVector> &outShipInactiveHoles,
-        std::vector<FVector> &outShipMasts, std::vector<FVector> &outCannonLocation, FVector &outShipWheel);
-
-    // Prediction Functions
-    FVector RotationPrediction(FCameraCacheEntry LPCam, FVector LPLinearVel,
-        float ProjectileSpeed, float ProjectileGravityScale,
-        FVector ShipCoords, FVector ShipLinearVel, FVector ShipAngularVel);
-
-    FVector RotationPredictionForPart(
-        FCameraCacheEntry LPCam, FVector LPLinearVel, float ProjectileSpeed, float ProjectileGravityScale,
-        FVector ShipCenterCoords, FVector ShipLinearVel, FVector ShipAngularVel, FRotator ShipInitialRotation,
-        FVector TargetPartGlobalCoords);
-
-    FVector QuarticPrediction(FCameraCacheEntry LPCam, FVector LPLinearVel,
-        float ProjectileSpeed, float ProjectileGravityScale, FVector ShipCoords, FVector ShipLinearVel);
-
+private:
+    // Core Prediction
+    AimSolution SolveAimingProblem(const FVector& oTargetPos, const FVector& oTargetVelocity, const FVector& oTargetAngularVelocity, const FVector& oSourcePos, float fProjectileSpeed, float fProjectileGravityScalar);
+    int AimAtShip(const FVector& oTargetPos, const FVector& oTargetVelocity, const FVector& oTargetAngularVelocity, const FVector& oSourcePos, const FVector& oSourceVelocity, float fProjectileSpeed, float fProjectileGravityScalar, FRotator& oOutLow, FRotator& oOutHigh, DrawingContext* ctx, const FMinimalViewInfo& CameraInfo, int MonWidth, int MonHeight);
+    FVector PredictAimpointForPart(const FVector& oTargetPos, const FVector& oTargetVelocity, const FVector& oTargetAngularVelocity, const FVector& oSourcePos, const FVector& oSourceVelocity, float fProjectileSpeed, float fProjectileGravityScalar, const FVector& partLocation);
     FVector StaticPrediction(FVector PlayerPos, FVector TargetPos, float ProjectileSpeed, float ProjectileGravityScale);
 
-private:
+    // Helpers
+    FVector RotatorToVector(const FRotator& Rot);
+    uintptr_t GetCannonActor(uintptr_t LPawn, uintptr_t GNames);
+    void GetProjectileInfo(uintptr_t CannonActor, uintptr_t GNames, float &outProjectileSpeed, float &outProjectileGravityScale);
+    void GetShipInfo(uintptr_t ShipActor, FVector &outShipLinearVel, FVector &outShipAngularVel, FRotator &outShipInitialRotation);
+    void GetShipComponents(Entity ShipActor, std::vector<Entity> &OtherEntities, std::vector<FVector> &outShipActiveHoles, std::vector<FVector> &outShipInactiveHoles, std::vector<FVector> &outShipMasts, std::vector<FVector> &outCannonLocation, FVector &outShipWheel);
+
     float lastLoadedProjectileSpeed = 5700.0f, lastLoadedProjectileGravityScale = 0.791f;
 };
 
