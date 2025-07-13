@@ -4,7 +4,7 @@
 #include <vector>
 #include <limits>
 #include <algorithm>
-#include <cstdio> // For printf debugging
+#include <cstdio> // For snprintf used in debug text
 #include <optional>
 
 #ifndef M_PI
@@ -100,125 +100,179 @@ float time_func(float t, float K, float L, float M, float N, float r, float w, f
 	const float M2 = M * M;
 	const float N2 = N * N;
 	const float r2 = r * r;
-	return N2 * t * t * t * t + ((2 * M * N) - S2) * t * t + 2 * r * (K * cos(theta + (w * t)) + L * sin(theta + (w * t))) + K2 + L2 + M2 + r2;
+	return N2 * t * t * t * t + (2 * M * N - S2) * t * t + 2 * r * (K * cos(theta + (w * t)) + L * sin(theta + (w * t))) + K2 + L2 + M2 + r2;
 }
 
 float time_derivFunc(float t, float K, float L, float M, float N, float r, float w, float theta, float S2)
 {
 	const float N2 = N * N;
-	return 4 * N2 * t * t * t * t + 2 * ((2 * M * N) - S2) * t + 2 * r * w * (L * cos(theta + (w * t)) - K * sin(theta + (w + t)));
+	return 4 * N2 * t * t * t + 2 * (2 * M * N - S2) * t + 2 * r * w * (L * cos(theta + (w * t)) - K * sin(theta + w * t));
 }
 
 float newtonRaphson(float t, float K, float L, float M, float N, float r, float w, float theta, float S2)
 {
-	float h = time_func(t, K, L, M, N, r, w, theta, S2) / time_derivFunc(t, K, L, M, N, r, w, theta, S2);
-	int counter = 0;
-	while (abs(h) >= 0.01)
+	if (t < 0.f) return -1.f;
+	for (int i = 0; i < 20; ++i)
 	{
-		if (counter > 200)
-		{
-			break;
-		}
-		h = time_func(t, K, L, M, N, r, w, theta, S2) / time_derivFunc(t, K, L, M, N, r, w, theta, S2);
+		float f_t = time_func(t, K, L, M, N, r, w, theta, S2);
+		float fd_t = time_derivFunc(t, K, L, M, N, r, w, theta, S2);
+		if (std::abs(fd_t) < 1e-6) return -1.f;
+		float h = f_t / fd_t;
 		t = t - h;
-		counter++;
+		if (std::abs(h) < 0.001) return t;
 	}
-	return t;
+	return -1.f;
 }
 
-int AimAtShip(const FVector& oTargetPos, const FVector& oTargetVelocity, const FVector& oTargetAngularVelocity, const FVector& oSourcePos, const FVector& oSourceVelocity, float fProjectileSpeed, float fProjectileGravityScalar, FRotator& oOutLow, FRotator& oOutHigh)
+// =======================================================================================================================
+// === REWRITTEN AimAtShip FUNCTION WITH MOVING SOURCE COMPENSATION AND MORE DEBUGGING
+// =======================================================================================================================
+int AimAtShip(const FVector& oTargetPos, const FVector& oTargetVelocity, const FVector& oTargetAngularVelocity, const FVector& oSourcePos, const FVector& oSourceVelocity, float fProjectileSpeed, float fProjectileGravityScalar, FRotator& oOutLow, FRotator& oOutHigh, DrawingContext* ctx, const FMinimalViewInfo& CameraInfo, int MonWidth, int MonHeight)
 {
-	const FVector pPos = oSourcePos;
-	const float w = oTargetAngularVelocity.z;
-	if (w > -1.0 && w < 1.0)
+	Coords targetScreenPos = WorldToScreen(oTargetPos, CameraInfo, MonWidth, MonHeight);
+	bool targetOnScreen = targetScreenPos.x > 1 && targetScreenPos.y > 1 && targetScreenPos.x < MonWidth && targetScreenPos.y < MonHeight;
+
+	const float w_deg = oTargetAngularVelocity.z;
+
+	// Use linear prediction if the target isn't turning significantly.
+	if (std::abs(w_deg) < 1.0f)
 	{
-		int n = AimAtMovingTarget(oTargetPos, oTargetVelocity, fProjectileSpeed, fProjectileGravityScalar, pPos, oSourceVelocity, oOutLow, oOutHigh);
-		return n;
+		if (targetOnScreen) {
+			ctx->draw_text(targetScreenPos.x, targetScreenPos.y - 40, "Mode: Linear (Not Turning)", COLOR::YELLOW);
+		}
+		// The standard moving-target solver already handles a moving source.
+		return AimAtMovingTarget(oTargetPos, oTargetVelocity, fProjectileSpeed, fProjectileGravityScalar, oSourcePos, oSourceVelocity, oOutLow, oOutHigh);
 	}
-
-	const FVector diff(oTargetPos - pPos);
-	auto w_pos = FVector(0, 0, w).Size();
-	auto w_rad = (w_pos * M_PI) / 180;
-
 
 	const float v_target_boat = FVector(oTargetVelocity.x, oTargetVelocity.y, 0.0f).Size();
-	const float r = (v_target_boat / w_rad) * 0.98;
-
-	float theta_rad = 0.f;
-	if (w < 0.f)
+	if (v_target_boat < 50.f)
 	{
-		if (oTargetVelocity.x < 0.f)
-		{
-			theta_rad = (std::atan2f((-1 * oTargetVelocity.x), oTargetVelocity.y));
+		if (targetOnScreen) {
+			ctx->draw_text(targetScreenPos.x, targetScreenPos.y - 25, "Target too slow, using Linear", COLOR::YELLOW);
 		}
-		else if (oTargetVelocity.x > 0.f)
-		{
-			theta_rad = (std::atan2f((-1 * oTargetVelocity.x), oTargetVelocity.y)) + 2 * M_PI;
-		}
-	}
-	else if (w > 0.f)
-	{
-		theta_rad = (std::atan2f((-1 * oTargetVelocity.x), oTargetVelocity.y)) + M_PI;
+		return AimAtMovingTarget(oTargetPos, oTargetVelocity, fProjectileSpeed, fProjectileGravityScalar, oSourcePos, oSourceVelocity, oOutLow, oOutHigh);
 	}
 
-	const float K = diff.x - (r * cosf(theta_rad));
-	const float L = diff.y - (r * sinf(theta_rad));
-	const float M = diff.z;
-	const float N = (981.f * fProjectileGravityScalar) / 2;
+	// --- SETUP PARAMETERS ---
+	// IMPORTANT: The rotational solver math assumes a STATIC observer.
+	// We run the solver as if we are not moving, find the impact point and time,
+	// and THEN we compensate for our own movement in the final aiming step.
+	const FVector pPos = oSourcePos;
+	const FVector diff_to_target = oTargetPos - pPos;
+	const float w_rad = w_deg * (M_PI / 180.f);
+	const float r_solver = v_target_boat / std::abs(w_rad);
+
+	// --- GEOMETRY & SOLVER SETUP ---
+	FVector vel_dir_2d = FVector(oTargetVelocity.x, oTargetVelocity.y, 0.f).unit();
+	FVector to_center_dir = (w_rad > 0) ? FVector(-vel_dir_2d.y, vel_dir_2d.x, 0.f) : FVector(vel_dir_2d.y, -vel_dir_2d.x, 0.f);
+	FVector turn_center = oTargetPos + (to_center_dir * r_solver);
+	FVector from_center_to_ship = oTargetPos - turn_center;
+	float theta_rad = atan2f(from_center_to_ship.y, from_center_to_ship.x);
+
+	const FVector diff_to_center = turn_center - pPos;
+	const float K = diff_to_center.x;
+	const float L = diff_to_center.y;
+	const float M = diff_to_target.z;
+	const float N = (981.f * fProjectileGravityScalar) / 2.f;
 	const float S2 = fProjectileSpeed * fProjectileSpeed;
+	const float fGroundDist = FVector(diff_to_target.x, diff_to_target.y, 0.0f).Size();
+	float t_init = fGroundDist / fProjectileSpeed;
 
-	const FVector oDiffXY(diff.x, diff.y, 0.0f);
-	const float fGroundDist = oDiffXY.Size();
+	float t_best = newtonRaphson(t_init, K, L, M, N, r_solver, w_rad, theta_rad, S2);
 
-	float t_init;
-	if (fGroundDist < 10000)
+	// --- POST-SOLVER CHECKS ---
+	if (t_best < 0.f || t_best > 12.0f)
 	{
-		t_init = 4;
-	}
-	else if (fGroundDist < 25000)
-	{
-		t_init = 10;
-	}
-	else if (fGroundDist < 40000)
-	{
-		t_init = 15;
-	}
-	else
-	{
-		t_init = 20;
-	}
-
-	float t_best = newtonRaphson(t_init, K, L, M, N, r, w_rad, theta_rad, S2);
-
-	if (t_best < 0)
-	{
+		if (targetOnScreen) {
+			ctx->draw_text(targetScreenPos.x, targetScreenPos.y, "ROTATIONAL SOLVER FAILED", COLOR::RED);
+		}
 		return 0;
 	}
 
-	const float At = oTargetPos.x - r * cos(theta_rad) + r * cos(theta_rad + (w_rad * t_best));
-	const float Bt = oTargetPos.y - r * sin(theta_rad) + r * sin(theta_rad + (w_rad * t_best));
-	const FVector oAimAt = FVector(At, Bt, oTargetPos.z);
-	return AimAtStaticTarget(oAimAt, fProjectileSpeed, fProjectileGravityScalar, oSourcePos, oOutLow, oOutHigh);
+	// --- PREDICTION SUCCESSFUL ---
+	float final_angle = theta_rad + (w_rad * t_best);
+	const FVector oAimAt = turn_center + FVector(r_solver * cosf(final_angle), r_solver * sinf(final_angle), oTargetPos.z);
+
+	// --- EXTENSIVE DEBUG VISUALIZATION ---
+	// Calculate player's future position
+	FVector futureSourcePos = oSourcePos + (oSourceVelocity * t_best);
+
+	// Project all key points to the screen
+	Coords aimAtScreen = WorldToScreen(oAimAt, CameraInfo, MonWidth, MonHeight);
+	Coords sourceScreen = WorldToScreen(oSourcePos, CameraInfo, MonWidth, MonHeight);
+	Coords futureSourceScreen = WorldToScreen(futureSourcePos, CameraInfo, MonWidth, MonHeight);
+
+	// Draw the true shot path (from where you WILL BE to where the target WILL BE)
+	if ((futureSourceScreen.x > 1 && futureSourceScreen.y > 1) || (aimAtScreen.x > 1 && aimAtScreen.y > 1)) {
+		ctx->draw_line(futureSourceScreen.x, futureSourceScreen.y, aimAtScreen.x, aimAtScreen.y, 2.0f, COLOR::YELLOW);
+	}
+	// Draw a line from your current position to the impact point for reference
+	if ((sourceScreen.x > 1 && sourceScreen.y > 1) || (aimAtScreen.x > 1 && aimAtScreen.y > 1)) {
+		ctx->draw_line(sourceScreen.x, sourceScreen.y, aimAtScreen.x, aimAtScreen.y, 1.0f, COLOR::CYAN);
+	}
+
+	// Draw markers for player's current and future positions
+	ctx->draw_text(sourceScreen.x, sourceScreen.y, "[Player Now]", COLOR::CYAN);
+	drawX(ctx, futureSourceScreen, 8, COLOR::YELLOW);
+	ctx->draw_text(futureSourceScreen.x + 10, futureSourceScreen.y, "[Player Future]", COLOR::YELLOW);
+
+	// Draw the target's predicted path (green line) and final impact point (green X)
+	FVector last_path_point = oTargetPos;
+	float time_step = t_best / 10.f;
+	for (float t = time_step; t < t_best + time_step; t += time_step) {
+		float current_t = std::min(t, t_best);
+		float current_angle = theta_rad + (w_rad * current_t);
+		FVector current_path_point = turn_center + FVector(r_solver * cosf(current_angle), r_solver * sinf(current_angle), oTargetPos.z);
+		Coords p1 = WorldToScreen(last_path_point, CameraInfo, MonWidth, MonHeight);
+		Coords p2 = WorldToScreen(current_path_point, CameraInfo, MonWidth, MonHeight);
+		if ((p1.x > 1 && p1.y > 1) || (p2.x > 1 && p2.y > 1)) {
+			ctx->draw_line(p1.x, p1.y, p2.x, p2.y, 2.0f, COLOR::GREEN);
+		}
+		last_path_point = current_path_point;
+	}
+	drawX(ctx, aimAtScreen, 10, COLOR::GREEN);
+
+	// Draw the comprehensive text block
+	if (targetOnScreen) {
+		char buffer[512];
+		FVector relativeVel = oTargetVelocity - oSourceVelocity;
+		snprintf(buffer, sizeof(buffer),
+			"Mode: Rotational (Moving Src)\n"
+			"Time: %.2fs\n"
+			"Radius: %.0f\n"
+			"Player Vel: %.0f, %.0f\n"
+			"Target Vel: %.0f, %.0f\n"
+			"Relative Vel: %.0f, %.0f",
+			t_best, r_solver,
+			oSourceVelocity.x, oSourceVelocity.y,
+			oTargetVelocity.x, oTargetVelocity.y,
+			relativeVel.x, relativeVel.y
+		);
+		ctx->draw_text(targetScreenPos.x + 20, targetScreenPos.y + 20, buffer, COLOR::YELLOW);
+	}
+
+	// ==============================================================================
+    // === THE FIX: Use AimAtMovingTarget to compensate for our own movement.
+    // ==============================================================================
+	// We are aiming at a static point in space (oAimAt) from a moving cannon.
+	// We give the target point {0,0,0} velocity.
+	return AimAtMovingTarget(oAimAt, {0, 0, 0}, fProjectileSpeed, fProjectileGravityScalar, oSourcePos, oSourceVelocity, oOutLow, oOutHigh);
 }
 
+
 FVector RotatorToVector(const FRotator& Rot) {
-	// Convert degrees to radians
 	const float pitchRad = Rot.Pitch * (M_PI / 180.0f);
 	const float yawRad = Rot.Yaw * (M_PI / 180.0f);
-
 	const float sp = sinf(pitchRad);
 	const float cp = cosf(pitchRad);
 	const float sy = sinf(yawRad);
 	const float cy = cosf(yawRad);
-
 	return FVector(cp * cy, cp * sy, sp);
 }
 
 void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> ships, std::vector<Entity> Enemies, std::vector<Entity> OtherEntities, DrawingContext *ctx, InputManager *inpMngr) {
 
     uintptr_t cannonActor = GetCannonActor(LPawn, GNames);
-    //if (cannonActor == 0x0) return;
-
     float projectileSpeed, projectileGravityScale;
     GetProjectileInfo(cannonActor, GNames, projectileSpeed, projectileGravityScale);
     if (projectileSpeed == 0) {
@@ -235,15 +289,12 @@ void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerContro
 
     FVector localPlayerVelocity = GetShipVelocityByDistance(LPawn, ships);
 
-    // Loop through each target ship
     for (const auto& ship : ships) {
         FVector shipLinearVel, shipAngularVel;
         FRotator shipInitialRotation;
         GetShipInfo(ship.pawn, shipLinearVel, shipAngularVel, shipInitialRotation);
-
         FVector shipCoords = ship.location;
 
-        // Now, the prediction functions will receive clean data.
         FVector rotationAimPoint = RotationPrediction(CameraCache, localPlayerVelocity, projectileSpeed, projectileGravityScale, shipCoords, shipLinearVel, shipAngularVel);
         if (rotationAimPoint.x != 0.f || rotationAimPoint.y != 0.f || rotationAimPoint.z != 0.f) {
             Coords screenPos = WorldToScreen(rotationAimPoint, CameraInfo, MonWidth, MonHeight);
@@ -253,27 +304,17 @@ void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerContro
         }
 
     	FRotator AimLow, AimHigh;
-    	int solutions = AimAtShip(shipCoords, shipLinearVel, shipAngularVel, CameraCache.POV.Location, localPlayerVelocity, projectileSpeed, projectileGravityScale, AimLow, AimHigh);
+    	int solutions = AimAtShip(shipCoords, shipLinearVel, shipAngularVel, CameraCache.POV.Location, localPlayerVelocity, projectileSpeed, projectileGravityScale, AimLow, AimHigh, ctx, CameraInfo, MonWidth, MonHeight);
 
-    	// Use the rotator from the function
     	if (solutions > 0) {
-    		// 1. Get the starting point (your camera)
     		FVector startPoint = CameraCache.POV.Location;
-
-    		// 2. Convert the rotator to a normalized direction vector
-    		FVector aimDirection = RotatorToVector(AimLow); // Using the low angle solution
-
-    		// 3. Get the distance to the target ship. This is a good distance to use.
+    		FVector aimDirection = RotatorToVector(AimLow);
     		float distanceToShip = (shipCoords - startPoint).Size();
-
-    		// 4. Calculate the aim point in the world
     		FVector worldAimPoint = startPoint + (aimDirection * distanceToShip);
-
-    		// 5. Project that world point to the screen
     		Coords screenPos = WorldToScreen(worldAimPoint, CameraInfo, MonWidth, MonHeight);
     		if (screenPos.x > 1 && screenPos.y > 1 && screenPos.x < MonWidth && screenPos.y < MonHeight) {
-    			// Draw a yellow circle to represent the aim direction
-    			drawX(ctx, screenPos, 5, COLOR::MAGENTA);
+    			drawX(ctx, screenPos, 8, COLOR::MAGENTA);
+                ctx->draw_text(screenPos.x + 10, screenPos.y, "Final Aim", COLOR::MAGENTA);
     		}
     	}
 
@@ -289,7 +330,6 @@ void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerContro
                 }
             }
         }
-
         for (const auto& hole : shipInactiveHoles) {
             FVector aimPoint = RotationPredictionForPart(CameraCache, localPlayerVelocity, projectileSpeed, projectileGravityScale, shipCoords, shipLinearVel, shipAngularVel, shipInitialRotation, hole);
             if (aimPoint.x != 0.f || aimPoint.y != 0.f || aimPoint.z != 0.f) {
@@ -299,7 +339,6 @@ void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerContro
                 }
             }
         }
-        //TODO: FIX THE WAY YOU GET LOCATION
         for (const auto& mast : shipMasts) {
             FVector aimPoint = RotationPredictionForPart(CameraCache, localPlayerVelocity, projectileSpeed, projectileGravityScale, shipCoords, shipLinearVel, shipAngularVel, shipInitialRotation, mast);
             if (aimPoint.x != 0.f || aimPoint.y != 0.f || aimPoint.z != 0.f) {
@@ -310,7 +349,6 @@ void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerContro
                 }
             }
         }
-        //TODO: FIX THE WAY YOU GET LOCATION
         for (const auto& cannon : cannonLocations) {
             FVector aimPoint = RotationPredictionForPart(CameraCache, localPlayerVelocity, projectileSpeed, projectileGravityScale, shipCoords, shipLinearVel, shipAngularVel, shipInitialRotation, cannon);
             if (aimPoint.x != 0.f || aimPoint.y != 0.f || aimPoint.z != 0.f) {
@@ -320,7 +358,6 @@ void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerContro
                 }
             }
         }
-        //TODO; FIX THE WAY YOU GET LOCATION
         FVector aimPoint = RotationPredictionForPart(CameraCache, localPlayerVelocity, projectileSpeed, projectileGravityScale, shipCoords, shipLinearVel, shipAngularVel, shipInitialRotation, shipWheel);
         if (aimPoint.x != 0.f || aimPoint.y != 0.f || aimPoint.z != 0.f) {
             Coords screenPos = WorldToScreen(aimPoint, CameraInfo, MonWidth, MonHeight);
@@ -329,12 +366,10 @@ void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerContro
             }
         }
 
-
-    	//TODO: CHANGE TO USE STATICPREDICTION FUNCTION
-        shipLinearVel = {0, 0, 0};
-        shipAngularVel = {0, 0, 0};
-        localPlayerVelocity = {0, 0, 0};
-        FVector quarticAimPoint = QuarticPrediction(CameraCache, localPlayerVelocity, projectileSpeed, projectileGravityScale, shipCoords, shipLinearVel);
+        FVector staticVel = {0, 0, 0};
+        FVector staticAngVel = {0, 0, 0};
+        FVector staticPlayerVel = {0, 0, 0};
+        FVector quarticAimPoint = QuarticPrediction(CameraCache, staticPlayerVel, projectileSpeed, projectileGravityScale, shipCoords, staticVel);
         if (quarticAimPoint.x != 0.f || quarticAimPoint.y != 0.f || quarticAimPoint.z != 0.f) {
             Coords screenPos = WorldToScreen(quarticAimPoint, CameraInfo, MonWidth, MonHeight);
             if (screenPos.x > 1 && screenPos.y > 1 && screenPos.x < MonWidth && screenPos.y < MonHeight) {
@@ -343,6 +378,8 @@ void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerContro
         }
     }
 }
+
+
 
 ///////////////// Cannon Prediction Functions //////////////////
 
