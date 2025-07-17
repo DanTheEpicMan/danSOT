@@ -20,7 +20,8 @@ public:
 
 private:
     bool drawCrosshair = true;
-    bool drawRadar = true;
+    bool drawRadar = true; double radarScale = 400; //max dist
+    bool drawLocalRadar = true;
     bool drawShipList = true;
     bool drawSinkInfo = true;
 
@@ -45,6 +46,7 @@ private:
     bool drawShipVelocity = true;
     bool drawShipAngleArrow = true;
     bool drawCloseShipWaterInfo = true;
+    bool drawShipMovement = true;
 
     bool drawMerms = true;
     bool shipwrecks = true;
@@ -64,6 +66,9 @@ private:
     bool drawAllFactionLoot = false;
     bool drawMicsLoot = false;
 
+private:
+    std::vector<FVector> ShipsHolesPos; //need to enable draw of holes (will give outline of ship)
+    std::vector<FVector> CannonBalls;//need to enable draw of projectiles
 };
 
 

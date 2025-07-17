@@ -67,8 +67,7 @@ namespace Offsets {
     inline ptr HullDamage = 0xF80;
         inline ptr DamageZones = 0x440;
             inline ptr DamageLevel = 0x754; //part of DamageZone, gives int value of damage level
-            // inline ptr SceneRootComponent = 0x450; //part of DamageZone, gives scene component
-            //     inline ptr ActorCoordinates = 0x11c; //part of SceneComponent, gives location of anything, in this case damage zone
+            // inliCinline ptr ActorCoordinates = 0x11c; //part of SceneComponent, gives location of anything, in this case damage zone
         inline ptr ActiveHullDamageZones = 0x450; //part of HullDamage
             inline ptr SceneRootComponent = 0x450; //part of DamageZone, gives scene component
                 inline ptr ActorCoordinates = 0x11c; //part of SceneComponent, gives location of anything, in this case damage zone

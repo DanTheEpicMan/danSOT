@@ -101,6 +101,18 @@ int main() {
         ptr LPawn = ReadMemory<ptr>(PlayerController + Offsets::LocalPawn);
         ptr GNames = ReadMemory<ptr>(BaseAddress + Offsets::GName);
 
+        std::cout << "UWorld:" << std::hex << UWorld << std::dec << std::endl;
+        std::cout << "GameState:" << std::hex << GameState << std::dec << std::endl;
+        std::cout << "PresistentLvl:" << std::hex << PersistentLevel << std::dec << std::endl;
+        std::cout << "GameInstance:" << std::hex << GameInstance << std::dec << std::endl;
+        std::cout << "LocalPlayers:" << std::hex << LocalPlayer << std::dec << std::endl;
+        std::cout << "LocalPlayer:" << std::hex << LocalPlayer << std::dec << std::endl;
+        std::cout << "PlayerController:" << std::hex << PlayerController << std::dec << std::endl;
+        std::cout << "LPawn:" << std::hex << LPawn << std::dec << std::endl;
+        std::cout << "GNames:" << std::hex << GNames << std::dec << std::endl;
+
+        std::cout << std::endl;
+
         std::vector<int> myCrewIDs = getMyCrewIDs(GameState, PlayerController);
 
         std::vector<Entity> EnemyPlayers, TeamPlayers, EnemyShips, otherEntities;

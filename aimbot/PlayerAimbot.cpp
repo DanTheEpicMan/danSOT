@@ -132,10 +132,10 @@ void PlayerAimbot::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<
         float deltaY = bestTargetScreenCoords.y - (MonHeight / 2.0f);
 
         // Aims at full body (also give info for auto shoot)
-        Coords head = WorldToScreen({bestTargetLocation.x, bestTargetLocation.y, bestTargetLocation.z + 45}, CameraCache.POV, MonWidth, MonHeight);
-        Coords feet = WorldToScreen({bestTargetLocation.x, bestTargetLocation.y, bestTargetLocation.z - 30}, CameraCache.POV, MonWidth, MonHeight);
-        Coords left = WorldToScreen({bestTargetLocation.x - 15, bestTargetLocation.y, bestTargetLocation.z}, CameraCache.POV, MonWidth, MonHeight);
-        Coords right = WorldToScreen({bestTargetLocation.x + 15, bestTargetLocation.y, bestTargetLocation.z}, CameraCache.POV, MonWidth, MonHeight);
+        Coords head = WorldToScreen({bestTargetLocation.x, bestTargetLocation.y, bestTargetLocation.z + 35}, CameraCache.POV, MonWidth, MonHeight);
+        Coords feet = WorldToScreen({bestTargetLocation.x, bestTargetLocation.y, bestTargetLocation.z - 25}, CameraCache.POV, MonWidth, MonHeight);
+        Coords left = WorldToScreen({bestTargetLocation.x - 5, bestTargetLocation.y, bestTargetLocation.z}, CameraCache.POV, MonWidth, MonHeight);
+        Coords right = WorldToScreen({bestTargetLocation.x + 5, bestTargetLocation.y, bestTargetLocation.z}, CameraCache.POV, MonWidth, MonHeight);
 
 
         if (!this->aimAtCenter) {
