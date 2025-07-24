@@ -7,10 +7,10 @@
 #define ptr uintptr_t
 
 namespace Offsets {
-    inline ptr UWorld = 0x8A19E30; //Or GWorld, same thing if your updating
+    inline ptr UWorld = 0x8AAED30; //Or GWorld, same thing if your updating
         inline ptr GameState = 0x40; //Read forom UWorld
             inline ptr PlayerArray = 0x3C8; //Read from GameState
-            inline ptr CrewService = 0x5D0;
+            inline ptr CrewService = 0x5D0; //Athena_Classes
                 inline ptr Crews = 0x478; //Read TArray from CrewService, contains Crew structs
                     inline ptr CrewMatesPlayerStates = 0x20; // In Crew struct, called "Players". Read TArray from Crew struct, contains PlayerState structs
 
@@ -61,13 +61,13 @@ namespace Offsets {
         inline ptr PresistentLevel = 0x60; // Part of UWorld
             inline ptr OwningActor = 0xA0; //Part of Object part of Level (IDK what this is based on but this value probs not changing)
 
-    inline ptr GName = 0x8948EA8;
+    inline ptr GName = 0x89DDCB8;
 
     // ship (pawn when itterating through array)
-    inline ptr HullDamage = 0xF80;
-        inline ptr DamageZones = 0x440;
+    inline ptr HullDamage = 0xF90;
+        inline ptr DamageZones = 0x440; //part of HullDamage
             inline ptr DamageLevel = 0x754; //part of DamageZone, gives int value of damage level
-            // inliCinline ptr ActorCoordinates = 0x11c; //part of SceneComponent, gives location of anything, in this case damage zone
+            // inline ptr ActorCoordinates = 0x11c; //part of SceneComponent, gives location of anything, in this case damage zone
         inline ptr ActiveHullDamageZones = 0x450; //part of HullDamage
             inline ptr SceneRootComponent = 0x450; //part of DamageZone, gives scene component
                 inline ptr ActorCoordinates = 0x11c; //part of SceneComponent, gives location of anything, in this case damage zone

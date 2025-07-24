@@ -18,6 +18,18 @@ public:
     void Run(uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> EnemyPlayers, std::vector<Entity> TeamPlayers,
               std::vector<Entity> EnemyShips, std::vector<Entity> otherEntities, DrawingContext *ctx);
 
+    void DrawPredictedShipMovement(const FVector& currentPos, FVector& linearVel, const FVector& angularVel, float predictionSeconds,
+        const COLOR::Color pathColor, DrawingContext* ctx, const FMinimalViewInfo& CameraInfo, int MonWidth, int MonHeight);
+
+    void DrawCrosshair(int radius, DrawingContext* ctx, COLOR::Color color);
+
+    void DrawEnemies(std::vector<Entity> EnemyPlayers, FMinimalViewInfo CamPOV, COLOR::Color tracerColor, COLOR::Color enemyBoxColor);
+
+    void DrawTeam(std::vector<Entity> TeamPlayers, FMinimalViewInfo CamPOV, COLOR::Color teamBoxColor);
+
+    std::string DrawHolesAndUpdateName(uintptr_t shipAddr, FMinimalViewInfo CamPOV, std::string shipName, std::vector<Entity> otherObj);
+    std::string GetShipBaseName(std::string gameName);
+    void DrawShip(std::vector<Entity> ShipList, std::vector<Entity> OtherEntities, FMinimalViewInfo CamPOV, COLOR::Color ShipDisplayInfo);
 private:
     bool drawCrosshair = true;
     bool drawRadar = true; double radarScale = 400; //max dist
@@ -69,6 +81,9 @@ private:
 private:
     std::vector<FVector> ShipsHolesPos; //need to enable draw of holes (will give outline of ship)
     std::vector<FVector> CannonBalls;//need to enable draw of projectiles
+    int ScrWidth = 0, ScrHeight = 0;
+    DrawingContext* draw = nullptr;
+
 };
 
 

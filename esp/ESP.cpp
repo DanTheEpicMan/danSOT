@@ -1,315 +1,26 @@
 #include "ESP.h"
 
-void DrawPredictedShipMovement(const FVector& currentPos, const FVector& linearVel, const FVector& angularVel, float predictionSeconds, const COLOR::Color pathColor, DrawingContext* ctx, const FMinimalViewInfo& CameraInfo, int MonWidth, int MonHeight)
-{
-    if (predictionSeconds <= 0.f || !ctx) return;
-
-    const int numSteps = 20; // Use a fixed number of segments for the path
-    const float timeStep = predictionSeconds / numSteps;
-    FVector lastPathPoint = currentPos;
-
-    const float w_deg = angularVel.z;
-
-    // Use linear prediction if the target isn't turning significantly or is moving too slow.
-    if (std::abs(w_deg) < 1.0f || FVector(linearVel.x, linearVel.y, 0.0f).Size() < 50.f)
-    {
-        // --- Linear Prediction Path ---
-        for (int i = 1; i <= numSteps; ++i)
-        {
-            float t = i * timeStep;
-            FVector currentPathPoint = currentPos + (linearVel * t);
-
-            Coords p1 = WorldToScreen(lastPathPoint, CameraInfo, MonWidth, MonHeight);
-            Coords p2 = WorldToScreen(currentPathPoint, CameraInfo, MonWidth, MonHeight);
-
-            // Only draw if one of the points is valid/on-screen
-            if ((p1.x > 1 && p1.y > 1 && p1.x < MonWidth && p1.y < MonHeight) || (p2.x > 1 && p2.y > 1 && p2.x < MonWidth && p2.y < MonHeight)) {
-                ctx->draw_line(p1.x, p1.y, p2.x, p2.y, 2.0f, pathColor);
-            }
-            lastPathPoint = currentPathPoint;
-        }
-    }
-    else
-    {
-        // --- Rotational Prediction Path ---
-        const float w_rad = w_deg * (M_PI / 180.f);
-        if (std::abs(w_rad) < 1e-6) return; // Avoid division by zero
-        const float r_turn = FVector(linearVel.x, linearVel.y, 0.0f).Size() / std::abs(w_rad);
-
-        // Calculate the center of the turning circle
-        FVector vel_dir_2d = FVector(linearVel.x, linearVel.y, 0.f).unit();
-        FVector to_center_dir = (w_rad > 0) ? FVector(-vel_dir_2d.y, vel_dir_2d.x, 0.f) : FVector(vel_dir_2d.y, -vel_dir_2d.x, 0.f);
-        FVector turn_center = currentPos + (to_center_dir * r_turn);
-
-        // Calculate the initial angle of the ship relative to the turn center
-        float initial_angle = atan2f(currentPos.y - turn_center.y, currentPos.x - turn_center.x);
-
-        for (int i = 1; i <= numSteps; ++i)
-        {
-            float t = i * timeStep;
-            float current_angle = initial_angle + (w_rad * t);
-
-            FVector currentPathPoint = turn_center + FVector(
-                r_turn * cosf(current_angle),
-                r_turn * sinf(current_angle),
-                currentPos.z + (linearVel.z * t) // Also account for vertical movement (e.g., waves)
-            );
-
-            Coords p1 = WorldToScreen(lastPathPoint, CameraInfo, MonWidth, MonHeight);
-            Coords p2 = WorldToScreen(currentPathPoint, CameraInfo, MonWidth, MonHeight);
-
-            if ((p1.x > 1 && p1.y > 1 && p1.x < MonWidth && p1.y < MonHeight) || (p2.x > 1 && p2.y > 1 && p2.x < MonWidth && p2.y < MonHeight)) {
-                ctx->draw_line(p1.x, p1.y, p2.x, p2.y, 2.0f, pathColor);
-            }
-            lastPathPoint = currentPathPoint;
-        }
-    }
-}
-
 void ESP::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> EnemyPlayers, std::vector<Entity> TeamPlayers,
               std::vector<Entity> EnemyShips, std::vector<Entity> otherEntities, DrawingContext *ctx) {
+
+    ShipsHolesPos.clear();
+    CannonBalls.clear();
+    //Should move to contructor
+    this->ScrWidth = MonWidth, this->ScrHeight = MonHeight;
+    this->draw = ctx;
 
     ptr CameraManager = ReadMemory<ptr>(playerController + Offsets::PlayerCameraManager);
     FCameraCacheEntry CameraCache = ReadMemory<FCameraCacheEntry>(CameraManager + Offsets::CameraCachePrivate);
 
-    if (this->drawCrosshair) {
-        ctx->draw_line(MonWidth/2 - 10, MonHeight/2, MonWidth/2 + 10, MonHeight/2, 2, COLOR::ORANGE);
-        ctx->draw_line(MonWidth/2, MonHeight/2 - 10, MonWidth/2, MonHeight/2 + 10, 2, COLOR::ORANGE);
-    }
+    DrawCrosshair(10/*radius*/, ctx, COLOR::ORANGE);
+
+    DrawEnemies(EnemyPlayers, CameraCache.POV, COLOR::ORANGE, COLOR::RED);
+
+    DrawTeam(TeamPlayers, CameraCache.POV, COLOR::BLUE);
+
+    DrawShip(EnemyShips, otherEntities, CameraCache.POV, COLOR::YELLOW);
 
 
-    if (this->drawShipList) {
-        //sort EnemyShips by distance to player
-        std::vector<Entity> SortedShips; //Closest to farthest
-        for (int i = 0; i < EnemyShips.size(); i++) {
-            Entity &entity = EnemyShips[i];
-
-            if (!(entity.name == "BP_SmallShipTemplate_C" || entity.name == "BP_SmallShipNetProxy_C" ||
-                entity.name == "BP_MediumShipTemplate_C" || entity.name == "BP_MediumShipNetProxy_C"||
-                entity.name == "BP_LargeShipTemplate_C" || entity.name == "BP_LargeShipNetProxy_C")) {
-                //if not a real ship
-                continue;
-            }
-
-            int distance = (int)(entity.location.Distance(CameraCache.POV.Location) / 100); //Distance in m
-            for (int j = 0; j < SortedShips.size(); j++) {
-                if (distance < (int)(SortedShips[j].location.Distance(CameraCache.POV.Location) / 100)) {
-                    SortedShips.insert(SortedShips.begin() + j, entity);
-                    break;
-                }
-            }
-        }
-
-        int YCursor = 70;
-        for (int i = 0; i < SortedShips.size(); i++) {
-            Entity &entity = SortedShips[i];
-            int distance = (int)(entity.location.Distance(CameraCache.POV.Location) / 100); //Distance in m
-            std::string distanceInKmString = " - " + std::to_string(((int)(distance / 100))/10) + "m"; //Distance in km, keeps once decimal
-
-            std::string shipDisplayName = "";
-            if (entity.name == "BP_SmallShipTemplate_C" || entity.name == "BP_SmallShipNetProxy_C") shipDisplayName = "Sloop";
-            if (entity.name == "BP_MediumShipTemplate_C" || entity.name == "BP_MediumShipNetProxy_C") shipDisplayName = "Brigantine";
-            if (entity.name == "BP_LargeShipTemplate_C" || entity.name == "BP_LargeShipNetProxy_C") shipDisplayName = "Galleon";
-
-            if (distance < 1000) {
-                //Close - Red
-                ctx->draw_text_uncentered(10, YCursor, shipDisplayName + distanceInKmString, COLOR::RED);
-            } else if (distance < 2200) {
-                //Medium - Yellow
-                ctx->draw_text_uncentered(10, YCursor, shipDisplayName + distanceInKmString, COLOR::YELLOW);
-            } else {
-                //Far - Green
-                ctx->draw_text_uncentered(10, YCursor, shipDisplayName + distanceInKmString, COLOR::GREEN);
-            }
-            YCursor += 20;
-        }
-    }
-
-
-    if (this->drawTracers || this->drawEnemiesBox || this->drawEnemiesHealth || this->drawEnemiesNames || this->drawEnemiesBones) {
-        for (int i = 0; i < EnemyPlayers.size(); i++) {
-            Entity &entity = EnemyPlayers[i];
-
-            Coords screenCoordsFeet = WorldToScreen({entity.location.x, entity.location.y, entity.location.z - 100.0f}, CameraCache.POV, MonWidth, MonHeight);
-            Coords screenCoordsHead = WorldToScreen({entity.location.x, entity.location.y, entity.location.z + 100.0f}, CameraCache.POV, MonWidth, MonHeight);
-            int height = (int)(screenCoordsFeet.y - screenCoordsHead.y);
-            int width = (int)(height * 0.5f);
-
-            if (this->drawTracers) {
-                Coords tracerEndPoint = WorldToScreen(entity.location, CameraCache.POV, MonWidth, MonHeight);
-
-                if (coordsOnScreen(tracerEndPoint, MonWidth, MonHeight)) {
-                    ctx->draw_line(MonWidth / 2, MonHeight / 2, tracerEndPoint.x, tracerEndPoint.y, 2.0f, COLOR::ORANGE);
-                }
-            }
-
-            if (this->drawEnemiesBox) {
-                ctx->draw_box(screenCoordsHead.x - width / 2, screenCoordsHead.y, width, height, 2, COLOR::RED);
-            }
-
-            if (this->drawEnemiesHealth) {
-                uintptr_t entHealthComp = ReadMemory<uintptr_t>(entity.pawn + Offsets::HealthComponent); //HealthComponent
-                int EntityHealth = ReadMemory<float>(entHealthComp + Offsets::Health);
-                float healthPercentage = EntityHealth / 100.f;
-                int healthHeight = (int)(height * healthPercentage);
-                int missingHealthHeight = height - healthHeight;
-                int healthBarX = screenCoordsHead.x - (width / 2) - 5;
-                ctx->draw_line(healthBarX, screenCoordsHead.y, healthBarX, screenCoordsFeet.y, 3.0f, COLOR::RED);
-                ctx->draw_line(healthBarX, screenCoordsFeet.y, healthBarX, screenCoordsFeet.y - healthHeight, 3.0f, COLOR::GREEN);
-            }
-
-            if (this->drawEnemiesNames) {
-                // Display name above the enemy player
-            }
-
-            // Render skeleton if enabled
-            if (this->drawEnemiesBones) {
-                //RenderSkeleton(ctx, entity.player.meshComponentPtr, CameraCache, MonWidth, MonHeight);
-            }
-        } //for enemy
-    } //if enemy
-
-    if (this->drawTeamBox || this->drawTeamHealth || this->drawTeamNames || this->drawTeamBox) {
-        for (int i = 0; i < TeamPlayers.size(); i++) {
-            Entity &entity = TeamPlayers[i];
-
-            Coords screenCoordsFeet = WorldToScreen({entity.location.x, entity.location.y, entity.location.z - 100.0f}, CameraCache.POV, MonWidth, MonHeight);
-            Coords screenCoordsHead = WorldToScreen({entity.location.x, entity.location.y, entity.location.z + 100.0f}, CameraCache.POV, MonWidth, MonHeight);
-            int height = (int)(screenCoordsFeet.y - screenCoordsHead.y);
-            int width = (int)(height * 0.5f);
-
-            if (this->drawTeamBox) {
-                ctx->draw_box(screenCoordsHead.x - width / 2, screenCoordsHead.y, width, height, 2, COLOR::BLUE);
-            }
-
-            if (this->drawTeamHealth) {
-                uintptr_t entHealthComp = ReadMemory<uintptr_t>(entity.pawn + Offsets::HealthComponent); //HealthComponent
-                int EntityHealth = ReadMemory<float>(entHealthComp + Offsets::Health);
-                float healthPercentage = EntityHealth / 100.f;
-                int healthHeight = (int)(height * healthPercentage);
-                int missingHealthHeight = height - healthHeight;
-                int healthBarX = screenCoordsHead.x - (width / 2) - 5;
-                ctx->draw_line(healthBarX, screenCoordsHead.y, healthBarX, screenCoordsFeet.y, 3.0f, COLOR::RED);
-                ctx->draw_line(healthBarX, screenCoordsFeet.y, healthBarX, screenCoordsFeet.y - healthHeight, 3.0f, COLOR::GREEN);
-            }
-
-            if (this->drawTeamNames) {
-                // Display name above the team player
-            }
-
-            if (this->drawTeamBones) {
-                //RenderSkeleton(ctx, entity.player.meshComponentPtr, CameraCache, MonWidth, MonHeight);
-            }
-        } //for team
-    } //if team
-
-    if (this->drawShip || this->drawShipBox || this->drawHoles || this->drawShipHoleCount || this->drawShipFloodCount || this->drawShipVelocity || this->drawShipAngleArrow || this->drawCloseShipWaterInfo || this->drawSinkInfo) {
-        this->ShipsHolesPos.clear();
-        for (int i = 0; i < EnemyShips.size(); i++) {
-            Entity &entity = EnemyShips[i];
-
-            Coords screenCoords = WorldToScreen({entity.location.x, entity.location.y, entity.location.z + 200.f}, CameraCache.POV, MonWidth, MonHeight);
-            int distance = (int)(CameraCache.POV.Location.Distance(entity.location) / 100.f /*m*/);
-
-            std::string shipDisplayName = "";
-            if (entity.name == "BP_SmallShipTemplate_C" || entity.name == "BP_SmallShipNetProxy_C") shipDisplayName = "Sloop";
-            if (entity.name == "BP_MediumShipTemplate_C" || entity.name == "BP_MediumShipNetProxy_C") shipDisplayName = "Brigantine";
-            if (entity.name == "BP_LargeShipTemplate_C" || entity.name == "BP_LargeShipNetProxy_C") shipDisplayName = "Galleon";
-            if (entity.name == "BP_AISmallShipTemplate_C" || entity.name == "BP_AISmallShipNetProxy_C") shipDisplayName = "AI Sloop";
-            if (entity.name == "BP_AILargeShipTemplate_C" || entity.name == "BP_AILargeShipNetProxy_C") shipDisplayName = "AI Galleon";
-            if (entity.name == "BP_AggressiveGhostShip_C") shipDisplayName = "Ghost Ship";
-            if (entity.name == "NetProxy_C") shipDisplayName = "Far Ship";
-
-            if (shipDisplayName == "") continue; // Skip if no ship name is found
-
-            if (this->drawShipBox) {
-                // ctx->draw_box(screenCoords.x - 50, screenCoords.y - 20, 100, 40, 2, COLOR::YELLOW);
-            }
-
-            if (this->drawShipDist) {
-                shipDisplayName += " " + std::to_string(distance) + "m";
-            }
-
-            if (distance < 1750) { //wont work at this range anyway
-                if (this->drawHoles || this->drawShipHoleCount) {
-                    ptr hullDamage = ReadMemory<ptr>(entity.pawn + Offsets::HullDamage);
-                    TArray<ptr> DamageZones = ReadMemory<TArray<ptr>>(hullDamage + Offsets::ActiveHullDamageZones);
-                    if (this->drawHoles) {
-                        for (int j = 0; j < DamageZones.Length(); j++) {
-                            uintptr_t DamageZone = ReadMemory<ptr>(DamageZones.GetAddress() + (j * sizeof(uintptr_t)));
-                            ptr ShipSceneComponent = ReadMemory<ptr>(DamageZone + Offsets::SceneRootComponent);
-                            FVector location = ReadMemory<FVector>(ShipSceneComponent + Offsets::ActorCoordinates);
-                            this->ShipsHolesPos.push_back(location);
-                            drawX(ctx, WorldToScreen(location, CameraCache.POV, MonWidth, MonHeight), 5, COLOR::GREEN);
-                        }
-
-                        TArray<ptr> DamageZonesAllHoles = ReadMemory<TArray<ptr>>(hullDamage + Offsets::DamageZones);
-                        for (int j = 0; j < DamageZonesAllHoles.Length(); j++) {
-                            uintptr_t DamageZone = ReadMemory<ptr>(DamageZonesAllHoles.GetAddress() + (j * sizeof(uintptr_t)));
-                            ptr ShipSceneComponent = ReadMemory<ptr>(DamageZone + Offsets::SceneRootComponent);
-                            FVector location = ReadMemory<FVector>(ShipSceneComponent + Offsets::ActorCoordinates);
-                            ShipsHolesPos.push_back(location);
-                        }
-                    }
-
-                    if (this->drawShipHoleCount) {
-                        shipDisplayName += " " + std::to_string(DamageZones.Length()) + "H";
-                    }
-                }
-
-                if (this->drawShipFloodCount) {
-                    uintptr_t pShipInternalWaterComponent = ReadMemory<uintptr_t>(entity.pawn + Offsets::ShipInternalWaterComponent);
-                    uintptr_t pShipInternalWaterActor = ReadMemory<uintptr_t>(pShipInternalWaterComponent + Offsets::ChildActor);
-                    float waterAmount = ReadMemory<float>(pShipInternalWaterActor + Offsets::WaterAmount);
-                    float maxWaterAmount = ReadMemory<float>(pShipInternalWaterActor + Offsets::InternalWaterParams + Offsets::MaxWaterAmount);
-
-                    if (maxWaterAmount > 0.f) {
-                        shipDisplayName += " " + std::to_string((int)(waterAmount / maxWaterAmount * 100)) + "%";
-                    }
-                }
-
-                if (this->drawShipMovement) {
-                    ptr movementProxyComponent = ReadMemory<ptr>(entity.pawn + Offsets::ShipMovementProxyComponent);
-                    ptr movementProxyActor = ReadMemory<ptr>(movementProxyComponent + Offsets::ChildActor);
-                    ptr RepMovement_Address = movementProxyActor + Offsets::ShipMovement + Offsets::ReplicatedShipMovement_Movement;
-                    FVector ShipLinearVel = ReadMemory<FVector>(RepMovement_Address + Offsets::LinearVelocity);
-                    FVector ShipAngularVel = ReadMemory<FVector>(RepMovement_Address + Offsets::AngularVelocity);
-                    DrawPredictedShipMovement(entity.location, ShipLinearVel, ShipAngularVel, 30.f /*sec of traj*/,
-                        COLOR::WHITE, ctx, CameraCache.POV, MonWidth, MonHeight);
-                }
-            }
-
-            if (this->drawShipVelocity || this->drawShipAngleArrow) {
-                if (this->drawShipVelocity) {
-                    // Display ship velocity
-                    // FVector shipVelocity = ReadMemory<FVector>(entity.pawn + Offsets::Velocity); // Assuming you have an offset for ship velocity
-                }
-
-                if (this->drawShipAngleArrow) {
-                    //angluler velocity arrow
-                }
-            }
-
-            if (this->drawShip) {
-                ctx->draw_text(screenCoords.x, screenCoords.y, shipDisplayName, COLOR::YELLOW);
-            }
-
-            if (this->drawCloseShipWaterInfo && distance < 30) {
-                // Display water amount and holes
-                uintptr_t pShipInternalWaterComponent = ReadMemory<uintptr_t>(entity.pawn + Offsets::ShipInternalWaterComponent);
-                uintptr_t pShipInternalWaterActor = ReadMemory<uintptr_t>(pShipInternalWaterComponent + Offsets::ChildActor);
-                float waterAmount = ReadMemory<float>(pShipInternalWaterActor + Offsets::WaterAmount);
-                float maxWaterAmount = ReadMemory<float>(pShipInternalWaterActor + Offsets::InternalWaterParams + Offsets::MaxWaterAmount);
-
-                ptr hullDamage = ReadMemory<ptr>(entity.pawn + Offsets::HullDamage);
-                TArray<ptr> DamageZones = ReadMemory<TArray<ptr>>(hullDamage + Offsets::ActiveHullDamageZones);
-
-                if (waterAmount / maxWaterAmount * 100 > 1.f || DamageZones.Length() > 0) {
-                    ctx->draw_text(MonWidth/2, (MonHeight/2) + 80, std::to_string(DamageZones.Length()) + " " + std::to_string((int)(waterAmount / maxWaterAmount * 100)) + "%", COLOR::MAGENTA);
-                }
-            }
-        } //for ship
-    } //if ship
 
     if (this->drawMerms || this->shipwrecks || this->drawWorldEvents || this->drawRowboats || this->drawStorm ||
         this->drawGoodItems || this->drawGoodLoots || this->drawProjectiles || this->drawAIEnemies ||
@@ -561,6 +272,271 @@ void ESP::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> E
                 cursorY += localRadarSize + 20.f;
             }
         }
+}
+
+void ESP::DrawPredictedShipMovement(const FVector& currentPos, FVector& linearVel, const FVector& angularVel, float predictionSeconds, const COLOR::Color pathColor, DrawingContext* ctx, const FMinimalViewInfo& CameraInfo, int MonWidth, int MonHeight)
+{
+    return;
+    if (predictionSeconds <= 0.f || !ctx) return;
+    linearVel.z = 0;
+
+    const int numSteps = 20; // Use a fixed number of segments for the path
+    const float timeStep = predictionSeconds / numSteps;
+    FVector lastPathPoint = currentPos;
+
+    const float w_deg = angularVel.z;
+
+    // Use linear prediction if the target isn't turning significantly or is moving too slow.
+    if (std::abs(w_deg) < 1.0f || FVector(linearVel.x, linearVel.y, 0.0f).Size() < 50.f)
+    {
+        // --- Linear Prediction Path ---
+        for (int i = 1; i <= numSteps; ++i)
+        {
+            float t = i * timeStep;
+            FVector currentPathPoint = currentPos + (linearVel * t);
+
+            Coords p1 = WorldToScreen(lastPathPoint, CameraInfo, MonWidth, MonHeight);
+            Coords p2 = WorldToScreen(currentPathPoint, CameraInfo, MonWidth, MonHeight);
+            if (p1.x == 0) continue;
+            if (p2.x == 0) continue;
+
+            // Only draw if one of the points is valid/on-screen
+            if ((p1.x > 1 && p1.y > 1 && p1.x < MonWidth && p1.y < MonHeight) || (p2.x > 1 && p2.y > 1 && p2.x < MonWidth && p2.y < MonHeight)) {
+                ctx->draw_line(p1.x, p1.y, p2.x, p2.y, 2.0f, pathColor);
+            }
+            lastPathPoint = currentPathPoint;
+        }
+    }
+    else
+    {
+        // --- Rotational Prediction Path ---
+        const float w_rad = w_deg * (M_PI / 180.f);
+        if (std::abs(w_rad) < 1e-6) return; // Avoid division by zero
+        const float r_turn = FVector(linearVel.x, linearVel.y, 0.0f).Size() / std::abs(w_rad);
+
+        // Calculate the center of the turning circle
+        FVector vel_dir_2d = FVector(linearVel.x, linearVel.y, 0.f).unit();
+        FVector to_center_dir = (w_rad > 0) ? FVector(-vel_dir_2d.y, vel_dir_2d.x, 0.f) : FVector(vel_dir_2d.y, -vel_dir_2d.x, 0.f);
+        FVector turn_center = currentPos + (to_center_dir * r_turn);
+
+        // Calculate the initial angle of the ship relative to the turn center
+        float initial_angle = atan2f(currentPos.y - turn_center.y, currentPos.x - turn_center.x);
+
+        for (int i = 1; i <= numSteps; ++i)
+        {
+            float t = i * timeStep;
+            float current_angle = initial_angle + (w_rad * t);
+
+            FVector currentPathPoint = turn_center + FVector(
+                r_turn * cosf(current_angle),
+                r_turn * sinf(current_angle),
+                currentPos.z + (linearVel.z * t) // Also account for vertical movement (e.g., waves)
+            );
+
+            Coords p1 = WorldToScreen(lastPathPoint, CameraInfo, MonWidth, MonHeight);
+            Coords p2 = WorldToScreen(currentPathPoint, CameraInfo, MonWidth, MonHeight);
+
+            if ((p1.x > 1 && p1.y > 1 && p1.x < MonWidth && p1.y < MonHeight) || (p2.x > 1 && p2.y > 1 && p2.x < MonWidth && p2.y < MonHeight)) {
+                ctx->draw_line(p1.x, p1.y, p2.x, p2.y, 2.0f, pathColor);
+            }
+            lastPathPoint = currentPathPoint;
+        }
+    }
+}
+
+void ESP::DrawCrosshair(int radius, DrawingContext *ctx, COLOR::Color color) {
+    if (!this->drawCrosshair) return;
+    ctx->draw_line(ScrWidth/2 - radius, ScrHeight/2, ScrWidth/2 + radius, ScrHeight/2, 2, color);
+    ctx->draw_line(ScrWidth/2, ScrHeight/2 - radius, ScrWidth/2, ScrHeight/2 + radius, 2, color);
+}
+
+void ESP::DrawEnemies(std::vector<Entity> EnemyPlayers, FMinimalViewInfo CamPOV, COLOR::Color tracerColor, COLOR::Color enemyBoxColor) {
+    if (!(this->drawTracers || this->drawEnemiesBox || this->drawEnemiesHealth || this->drawEnemiesNames || this->drawEnemiesBones)) return;
+    for (int i = 0; i < EnemyPlayers.size(); i++) {
+        Entity &entity = EnemyPlayers[i];
+
+        Coords screenCoordsFeet = WorldToScreen({entity.location.x, entity.location.y, entity.location.z - 100.0f}, CamPOV, ScrWidth, ScrHeight);
+        Coords screenCoordsHead = WorldToScreen({entity.location.x, entity.location.y, entity.location.z + 100.0f}, CamPOV, ScrWidth, ScrHeight);
+        int height = (int)(screenCoordsFeet.y - screenCoordsHead.y);
+        int width = (int)(height * 0.5f);
+
+        if (this->drawTracers) { //Need a way to accurately get snapline
+
+        }
+
+        if (this->drawEnemiesBox) {
+            draw->draw_box(screenCoordsHead.x - width / 2, screenCoordsHead.y, width, height, 2, enemyBoxColor);
+        }
+
+        if (this->drawEnemiesHealth) {
+            uintptr_t entHealthComp = ReadMemory<uintptr_t>(entity.pawn + Offsets::HealthComponent); //HealthComponent
+            int EntityHealth = ReadMemory<float>(entHealthComp + Offsets::Health);
+            float healthPercentage = EntityHealth / 100.f;
+            int healthHeight = (int)(height * healthPercentage);
+            int missingHealthHeight = height - healthHeight;
+            int healthBarX = screenCoordsHead.x - (width / 2) - 5;
+            draw->draw_line(healthBarX, screenCoordsHead.y, healthBarX, screenCoordsFeet.y, 5.0f, COLOR::RED);
+            draw->draw_line(healthBarX, screenCoordsFeet.y, healthBarX, screenCoordsFeet.y - healthHeight, 5.0f, COLOR::GREEN);
+        }
+
+        if (this->drawEnemiesNames) {
+            // Display name above the enemy player
+        }
+
+        // Render skeleton if enabled
+        if (this->drawEnemiesBones) {
+            //RenderSkeleton(ctx, entity.player.meshComponentPtr, CameraCache, MonWidth, MonHeight);
+        }
+    }
+}
+
+void ESP::DrawTeam(std::vector<Entity> TeamPlayers, FMinimalViewInfo CamPOV, COLOR::Color teamBoxColor) {
+    if (!(this->drawTeamBox || this->drawTeamHealth || this->drawTeamNames || this->drawTeamBox)) return;
+    for (int i = 0; i < TeamPlayers.size(); i++) {
+        Entity &entity = TeamPlayers[i];
+
+        Coords screenCoordsFeet = WorldToScreen({entity.location.x, entity.location.y, entity.location.z - 100.0f}, CamPOV, ScrWidth, ScrHeight);
+        Coords screenCoordsHead = WorldToScreen({entity.location.x, entity.location.y, entity.location.z + 100.0f}, CamPOV, ScrWidth, ScrHeight);
+        int height = (int)(screenCoordsFeet.y - screenCoordsHead.y);
+        int width = (int)(height * 0.5f);
+
+        if (this->drawTeamBox) {
+            draw->draw_box(screenCoordsHead.x - width / 2, screenCoordsHead.y, width, height, 2, teamBoxColor);
+        }
+
+        if (this->drawTeamHealth) {
+            uintptr_t entHealthComp = ReadMemory<uintptr_t>(entity.pawn + Offsets::HealthComponent); //HealthComponent
+            int EntityHealth = ReadMemory<float>(entHealthComp + Offsets::Health);
+            float healthPercentage = EntityHealth / 100.f;
+            int healthHeight = (int)(height * healthPercentage);
+            int missingHealthHeight = height - healthHeight;
+            int healthBarX = screenCoordsHead.x - (width / 2) - 5;
+            draw->draw_line(healthBarX, screenCoordsHead.y, healthBarX, screenCoordsFeet.y, 3.0f, COLOR::RED);
+            draw->draw_line(healthBarX, screenCoordsFeet.y, healthBarX, screenCoordsFeet.y - healthHeight, 3.0f, COLOR::GREEN);
+        }
+
+        if (this->drawTeamNames) {
+            // Display name above the team player
+        }
+
+        if (this->drawTeamBones) {
+            //RenderSkeleton(ctx, entity.player.meshComponentPtr, CameraCache, MonWidth, MonHeight);
+        }
+    } //for team
+}
+
+std::string ESP::GetShipBaseName(std::string gameName) {
+    std::string shipDisplayName = "";
+    if (gameName == "BP_SmallShipTemplate_C" || gameName == "BP_SmallShipNetProxy_C") shipDisplayName = "Sloop";
+    if (gameName == "BP_MediumShipTemplate_C" || gameName == "BP_MediumShipNetProxy_C") shipDisplayName = "Brigantine";
+    if (gameName == "BP_LargeShipTemplate_C" || gameName == "BP_LargeShipNetProxy_C") shipDisplayName = "Galleon";
+    if (gameName == "BP_AISmallShipTemplate_C" || gameName == "BP_AISmallShipNetProxy_C") shipDisplayName = "AI Sloop";
+    if (gameName == "BP_AILargeShipTemplate_C" || gameName == "BP_AILargeShipNetProxy_C") shipDisplayName = "AI Galleon";
+    if (gameName == "BP_AggressiveGhostShip_C") shipDisplayName = "Ghost Ship";
+    if (gameName == "NetProxy_C") shipDisplayName = "Far Ship";
+    if (shipDisplayName == "") shipDisplayName = "Burning Blade"; //this should be replaced with real code that checks for burning blade specifically
+    return shipDisplayName;
+}
+
+std::string ESP::DrawHolesAndUpdateName(uintptr_t shipAddr, FMinimalViewInfo CamPOV, std::string shipName, std::vector<Entity> otherObj) {
+    ptr hullDamage = ReadMemory<ptr>(shipAddr + Offsets::HullDamage);
+    TArray<ptr> DamageZones = ReadMemory<TArray<ptr>>(hullDamage + Offsets::ActiveHullDamageZones);
+    if (this->drawHoles) {
+        for (int j = 0; j < DamageZones.Length(); j++) {
+            uintptr_t DamageZone = ReadMemory<ptr>(DamageZones.GetAddress() + (j * sizeof(uintptr_t)));
+            ptr ShipSceneComponent = ReadMemory<ptr>(DamageZone + Offsets::SceneRootComponent);
+            FVector location = ReadMemory<FVector>(ShipSceneComponent + Offsets::ActorCoordinates);
+            drawX(draw, WorldToScreen(location, CamPOV, MonWidth, MonHeight), 5, COLOR::GREEN);
+        }
+
+        TArray<ptr> DamageZonesAllHoles = ReadMemory<TArray<ptr>>(hullDamage + Offsets::DamageZones);
+        for (int j = 0; j < DamageZonesAllHoles.Length(); j++) {
+            uintptr_t DamageZone = ReadMemory<ptr>(DamageZonesAllHoles.GetAddress() + (j * sizeof(uintptr_t)));
+            ptr ShipSceneComponent = ReadMemory<ptr>(DamageZone + Offsets::SceneRootComponent);
+            FVector location = ReadMemory<FVector>(ShipSceneComponent + Offsets::ActorCoordinates);
+            ShipsHolesPos.push_back(location);
+        }
+    }
+
+    if (this->drawShipHoleCount) {
+        shipName += " " + std::to_string(DamageZones.Length()) + "H";
+    }
+
+    return shipName;
+}
 
 
+
+
+void ESP::DrawShip(std::vector<Entity> ShipList, std::vector<Entity> OtherEntities, FMinimalViewInfo CamPOV, COLOR::Color ShipDisplayInfo) {
+    if (!(this->drawShip || this->drawShipBox || this->drawHoles || this->drawShipHoleCount || this->drawShipFloodCount || this->drawShipVelocity || this->drawShipAngleArrow || this->drawCloseShipWaterInfo || this->drawSinkInfo)) return;
+    for (int i = 0; i < ShipList.size(); i++) {
+        Entity &entity = ShipList[i];
+
+        Coords screenCoords = WorldToScreen({entity.location.x, entity.location.y, entity.location.z + 200.f}, CamPOV, ScrWidth, ScrHeight);
+        int distance = (int)(CamPOV.Location.Distance(entity.location) / 100.f /*m*/);
+
+        std::string shipDisplayName = GetShipBaseName(entity.name);
+
+        if (this->drawShipBox) {
+            // ctx->draw_box(screenCoords.x - 50, screenCoords.y - 20, 100, 40, 2, COLOR::YELLOW);
+        }
+
+        if (this->drawShipDist) {
+            shipDisplayName += " " + std::to_string(distance) + "m";
+        }
+
+        shipDisplayName = DrawHolesAndUpdateName(entity.pawn, CamPOV, shipDisplayName, OtherEntities);
+
+        if (this->drawShipFloodCount) {
+            uintptr_t pShipInternalWaterComponent = ReadMemory<uintptr_t>(entity.pawn + Offsets::ShipInternalWaterComponent);
+            uintptr_t pShipInternalWaterActor = ReadMemory<uintptr_t>(pShipInternalWaterComponent + Offsets::ChildActor);
+            float waterAmount = ReadMemory<float>(pShipInternalWaterActor + Offsets::WaterAmount);
+            float maxWaterAmount = ReadMemory<float>(pShipInternalWaterActor + Offsets::InternalWaterParams + Offsets::MaxWaterAmount);
+
+            if (maxWaterAmount > 0.f) {
+                shipDisplayName += " " + std::to_string((int)(waterAmount / maxWaterAmount * 100)) + "%";
+            }
+        }
+
+        if (this->drawShipMovement) {
+            ptr movementProxyComponent = ReadMemory<ptr>(entity.pawn + Offsets::ShipMovementProxyComponent);
+            ptr movementProxyActor = ReadMemory<ptr>(movementProxyComponent + Offsets::ChildActor);
+            ptr RepMovement_Address = movementProxyActor + Offsets::ShipMovement + Offsets::ReplicatedShipMovement_Movement;
+            FVector ShipLinearVel = ReadMemory<FVector>(RepMovement_Address + Offsets::LinearVelocity);
+            FVector ShipAngularVel = ReadMemory<FVector>(RepMovement_Address + Offsets::AngularVelocity);
+            DrawPredictedShipMovement(entity.location, ShipLinearVel, ShipAngularVel, 30.f /*sec of traj*/,
+                COLOR::WHITE, draw, CamPOV, MonWidth, MonHeight);
+        }
+
+        if (this->drawShipVelocity || this->drawShipAngleArrow) {
+            if (this->drawShipVelocity) {
+                // Display ship velocity
+                // FVector shipVelocity = ReadMemory<FVector>(entity.pawn + Offsets::Velocity); // Assuming you have an offset for ship velocity
+            }
+
+            if (this->drawShipAngleArrow) {
+                //angluler velocity arrow
+            }
+        }
+
+        if (this->drawShip) {
+            draw->draw_text(screenCoords.x, screenCoords.y, shipDisplayName, ShipDisplayInfo);
+        }
+
+        if (this->drawCloseShipWaterInfo && distance < 30) {
+            // Display water amount and holes
+            uintptr_t pShipInternalWaterComponent = ReadMemory<uintptr_t>(entity.pawn + Offsets::ShipInternalWaterComponent);
+            uintptr_t pShipInternalWaterActor = ReadMemory<uintptr_t>(pShipInternalWaterComponent + Offsets::ChildActor);
+            float waterAmount = ReadMemory<float>(pShipInternalWaterActor + Offsets::WaterAmount);
+            float maxWaterAmount = ReadMemory<float>(pShipInternalWaterActor + Offsets::InternalWaterParams + Offsets::MaxWaterAmount);
+
+            ptr hullDamage = ReadMemory<ptr>(entity.pawn + Offsets::HullDamage);
+            TArray<ptr> DamageZones = ReadMemory<TArray<ptr>>(hullDamage + Offsets::ActiveHullDamageZones);
+
+            if (waterAmount / maxWaterAmount * 100 > 1.f || DamageZones.Length() > 0) {
+                draw->draw_text(MonWidth/2, (MonHeight/2) + 80, std::to_string(DamageZones.Length()) + " " + std::to_string((int)(waterAmount / maxWaterAmount * 100)) + "%", COLOR::MAGENTA);
+            }
+        }
+    }
 }
