@@ -39,6 +39,8 @@ private:
     void GetShipInfo(uintptr_t ShipActor, FVector &outShipLinearVel, FVector &outShipAngularVel, FRotator &outShipInitialRotation);
     void GetShipComponents(Entity ShipActor, std::vector<Entity> &OtherEntities, std::vector<FVector> &outShipActiveHoles, std::vector<FVector> &outShipInactiveHoles, std::vector<FVector> &outShipMasts, std::vector<FVector> &outCannonLocation, FVector &outShipWheel);
 
+    void AimAndDrawShipComponents(const Entity& ship, const FVector& shipLinearVel, const FVector& shipAngularVel, const FRotator& shipInitialRotation, const FVector& oSourcePos, const FVector& oSourceVelocity, float fProjectileSpeed, float fProjectileGravityScalar, const std::vector<Entity>& OtherEntities);
+
     float lastLoadedProjectileSpeed = 5700.0f, lastLoadedProjectileGravityScale = 0.791f;
     DrawingContext *draw = nullptr;
     FMinimalViewInfo CamInfo = {{0,0,0},{0,0,0}, {0}, 0, 0, 0, 0, 0, 0,};

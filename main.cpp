@@ -162,6 +162,9 @@ int main() {
         playerAimbot.Run(LPawn, PlayerController, EnemyPlayers, EnemyShips, ctx, &inputManager);
         cannonAimbot.Run(GNames, LPawn, PlayerController, EnemyShips, EnemyPlayers, otherEntities, ctx, &inputManager);
 
+        //Redraw the crosshair over everything else
+        esp.DrawCrosshair(10/*radius*/, ctx, COLOR::ORANGE);
+
         ctx->end_frame();
     }//while true
 

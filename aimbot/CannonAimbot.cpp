@@ -243,9 +243,109 @@ FVector RotatorToVector(const FRotator& rot)
     return FVector(x, y, z);
 }
 
+FVector PredictComponentFuturePosition( const FVector& shipCenterFuturePos, const FRotator& shipInitialRotation, const FVector& shipAngularVelocity,
+    float timeOfFlight, const FVector& componentInitialWorldPos, const FVector& shipInitialCenterPos)
+{
+    // 1. Find the component's initial position relative to the ship's center.
+    FVector relativePos = componentInitialWorldPos - shipInitialCenterPos;
+
+    // 2. Calculate the total rotation (yaw) the ship will undergo.
+    const float w_rad_z = shipAngularVelocity.z * (M_PI / 180.f);
+    float deltaYaw = w_rad_z * timeOfFlight; // Total rotation in radians
+
+    // 3. Rotate the component's relative position vector by the calculated yaw.
+    float cos_yaw = cosf(deltaYaw);
+    float sin_yaw = sinf(deltaYaw);
+
+    float rotated_x = relativePos.x * cos_yaw - relativePos.y * sin_yaw;
+    float rotated_y = relativePos.x * sin_yaw + relativePos.y * cos_yaw;
+
+    // Assume the Z position relative to the ship center remains constant.
+    FVector rotatedRelativePos(rotated_x, rotated_y, relativePos.z);
+
+    // 4. Add the rotated relative position to the ship's predicted future center position.
+    return shipCenterFuturePos + rotatedRelativePos;
+}
+
+void CannonAimbot::AimAndDrawShipComponents(const Entity& ship, const FVector& shipLinearVel, const FVector& shipAngularVel,
+    const FRotator& shipInitialRotation, const FVector& oSourcePos, const FVector& oSourceVelocity,
+    float fProjectileSpeed, float fProjectileGravityScalar, const std::vector<Entity>& OtherEntities)
+{
+    // Use the quartic solver to find the time of flight to the moving ship's center.
+    // This gives us the baseline time `t` needed to predict the ship's future state.
+    std::complex<float> pOutRoots[4];
+    const FVector v(shipLinearVel - oSourceVelocity);
+    const FVector g(0.f, 0.f, -981.f * fProjectileGravityScalar);
+    const FVector p(ship.location - oSourcePos);
+    const float c4 = (g | g) * 0.25f;
+    const float c3 = v | g;
+    const float c2 = (p | g) + (v | v) - (fProjectileSpeed * fProjectileSpeed);
+    const float c1 = 2.f * (p | v);
+    const float c0 = p | p;
+    const std::complex<float> pInCoeffs[5] = { c0, c1, c2, c3, c4 };
+    SolveQuartic(pInCoeffs, pOutRoots);
+
+    float timeOfFlight = std::numeric_limits<float>::max();
+    bool validTimeFound = false;
+    for (int i = 0; i < 4; i++) {
+        if (pOutRoots[i].real() > 0.f && std::abs(pOutRoots[i].imag()) < 0.0001f) {
+            timeOfFlight = std::min(timeOfFlight, pOutRoots[i].real());
+            validTimeFound = true;
+        }
+    }
+
+    if (!validTimeFound) return; // Cannot predict without a valid time of flight.
+
+    // Calculate the future position of the ship's center.
+    FVector shipCenterFuturePos = ship.location + (shipLinearVel * timeOfFlight);
+
+    // Get all the component locations from the game world.
+    std::vector<FVector> activeHoles, inactiveHoles, masts, cannons;
+    FVector wheelLocation;
+    GetShipComponents(ship, const_cast<std::vector<Entity>&>(OtherEntities), activeHoles, inactiveHoles, masts, cannons, wheelLocation);
+
+    // Lambda function to handle the logic for aiming and drawing a single point.
+    auto aimAndDrawPoint = [&](const FVector& initialPos, COLOR::Color color, const char* text, bool isX) {
+        FVector futurePos = PredictComponentFuturePosition(shipCenterFuturePos, shipInitialRotation, shipAngularVel, timeOfFlight, initialPos, ship.location);
+        FRotator solLow, solHigh;
+        if (AimAtStaticTarget(futurePos, fProjectileSpeed, fProjectileGravityScalar, oSourcePos, solLow, solHigh) > 0) {
+            FVector aimDir = RotatorToVector(solLow);
+            FVector aimWorldPos = this->CamInfo.Location + (aimDir * 10000.f); // Project point far out for screen calculation
+            Coords screenPos = WorldToScreen(aimWorldPos, this->CamInfo, MonWidth, MonHeight);
+            if (screenPos.x > 0 && screenPos.y > 0) {
+                if (isX) drawX(this->draw, screenPos, 5, color);
+                else this->draw->draw_text(screenPos.x, screenPos.y, text, color);
+            }
+        }
+    };
+
+    // Draw indicators for each component type.
+    for (const auto& hole : activeHoles)       aimAndDrawPoint(hole, COLOR::RED,   "",  true);
+    for (const auto& hole : inactiveHoles)     aimAndDrawPoint(hole, COLOR::GREEN, "",  true);
+    for (const auto& cannon : cannons)         aimAndDrawPoint(cannon, COLOR::YELLOW, "[C]", false);
+    if (wheelLocation.Size() > 0)              aimAndDrawPoint(wheelLocation, COLOR::YELLOW, "[W]", false);
+
+    // Handle drawing for masts, which require a line.
+    for (const auto& mastBase : masts) {
+        FVector futureMastBase = PredictComponentFuturePosition(shipCenterFuturePos, shipInitialRotation, shipAngularVel, timeOfFlight, mastBase, ship.location);
+        FVector futureMastTop = PredictComponentFuturePosition(shipCenterFuturePos, shipInitialRotation, shipAngularVel, timeOfFlight, mastBase + FVector(0, 0, 1500), ship.location); // 15m up
+
+        FRotator solLow, solHigh;
+        if (AimAtStaticTarget(futureMastBase, fProjectileSpeed, fProjectileGravityScalar, oSourcePos, solLow, solHigh) > 0) {
+            // Project the base and top points of the mast to the screen
+            Coords screenBase = WorldToScreen(futureMastBase, this->CamInfo, MonWidth, MonHeight);
+            Coords screenTop = WorldToScreen(futureMastTop, this->CamInfo, MonWidth, MonHeight);
+
+            if (screenBase.x > 0 && screenBase.y > 0 && screenTop.x > 0 && screenTop.y > 0) {
+                this->draw->draw_line(screenBase.x, screenBase.y, screenTop.x, screenTop.y, 2.0f, COLOR::WHITE);
+            }
+        }
+    }
+}
+
 void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> ships, std::vector<Entity> Enemies, std::vector<Entity> OtherEntities, DrawingContext *ctx, InputManager *inpMngr) {
-    uintptr_t cannonActor = GetCannonActor(LPawn, GNames);
-	//if (cannonActor == 0x0) return;
+     uintptr_t cannonActor = GetCannonActor(LPawn, GNames);
+    // if (cannonActor == 0x0) return;
 
     this->draw = ctx;
 
@@ -266,51 +366,37 @@ void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerContro
     localPlayerVelocity.z = 0; //not needed
     this->CamInfo = CameraInfo;
 
-    std::cout << "LPZ: " << CamInfo.Location.z << std::endl;
-
-    for (const auto& ship : ships) {
+    for (auto& ship : ships) {
         FVector shipLinearVel, shipAngularVel;
         FRotator shipInitialRotation;
         GetShipInfo(ship.pawn, shipLinearVel, shipAngularVel, shipInitialRotation);
         FVector shipCoords = ship.location;
+        shipLinearVel.z = 0;
+
+        //Adjust for the actual true coordinates or where you need to hit to make a hole
+        shipCoords.z -= 200;
 
         if (CameraCache.POV.Location.Distance(shipCoords) > 600 * 100) continue; //greater than 600m away
 
-    	//ShipCoords = targetPos
-    	//targetVelocity = shipLinearVel
-    	//targetAngulerVelocity = shipAngularVel
-    	//sourcePos = CameraCache.POV.Location
-    	//sourceVelocity = localPlayerVelocity
-    	//ProjectileSpeed = this->lastLoadedProjectileSpeed
-    	//ProjectileGravityScalar = this->lastLoadedProjectileGravityScale
         FRotator oOutLow, oOutHigh;
-
-
-        int solutions = AimAtShip(shipCoords, shipLinearVel, shipAngularVel, CameraCache.POV.Location, localPlayerVelocity, this->lastLoadedProjectileSpeed, this->lastLoadedProjectileGravityScale, oOutLow, oOutHigh);
+        int solutions = AimAtShip({shipCoords.x, shipCoords.y, shipCoords.z - 70}, shipLinearVel, shipAngularVel, CameraCache.POV.Location, localPlayerVelocity, this->lastLoadedProjectileSpeed, this->lastLoadedProjectileGravityScale, oOutLow, oOutHigh);
 
         if (solutions > 0)
         {
-            // We'll use the "low arc" solution (oOutLow) as it's the most common one to use.
             FRotator targetRotation = oOutLow;
-
-            // 1. Convert the target rotation (Pitch/Yaw) into a 3D direction vector.
             FVector aimDirection = RotatorToVector(targetRotation);
-
-            // 2. Create a point in the world 100 meters (10000 cm) in front of the camera along that direction.
-            // This gives us a 3D coordinate to feed into WorldToScreen.
             const float drawDistance = 10000.f;
             FVector aimWorldPosition = CameraInfo.Location + (aimDirection * drawDistance);
-
-            // 3. Project this 3D point to your 2D screen.
             Coords screenPosition = WorldToScreen(aimWorldPosition, this->CamInfo, MonWidth, MonHeight);
 
-            // 4. Draw a marker (e.g., a green 'X') at the calculated screen position.
-            // This 'X' shows you exactly where on the screen you need to move your mouse to.
-            if (screenPosition.x > 0 && screenPosition.y > 0) // Basic check to see if it's on screen
+            if (screenPosition.x > 0 && screenPosition.y > 0)
             {
-                drawX(this->draw, screenPosition, 15, COLOR::ORANGE); // A larger, green X
+                drawX(this->draw, screenPosition, 10, COLOR::CYAN);
             }
         }
+
+        AimAndDrawShipComponents(ship, shipLinearVel, shipAngularVel, shipInitialRotation, CameraCache.POV.Location,
+            localPlayerVelocity, this->lastLoadedProjectileSpeed, this->lastLoadedProjectileGravityScale, OtherEntities);
     }
 }
 

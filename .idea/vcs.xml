@@ -2,7 +2,6 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/cmake-build-release/gtk4-layer-shell" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/cmake-build-release/gtk4-layer-shell/gtk4-layer-shell" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/gtk4-layer-shell" vcs="Git" />
   </component>
 </project>

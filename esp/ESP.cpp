@@ -1,5 +1,7 @@
 #include "ESP.h"
 
+#include <algorithm>
+
 void ESP::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> EnemyPlayers, std::vector<Entity> TeamPlayers,
               std::vector<Entity> EnemyShips, std::vector<Entity> otherEntities, DrawingContext *ctx) {
 
@@ -19,6 +21,8 @@ void ESP::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> E
     DrawTeam(TeamPlayers, CameraCache.POV, COLOR::BLUE);
 
     DrawShip(EnemyShips, otherEntities, CameraCache.POV, COLOR::YELLOW);
+
+
 
 
 
@@ -176,7 +180,7 @@ void ESP::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> E
         };
 
         for (const auto& cannonBallPos: CannonBalls) {
-            if (cannonBallPos.z < -100) continue; //skip when below water
+            if (cannonBallPos.z < 100) continue; //skip when below water
             plot_on_radar(cannonBallPos, COLOR::ORANGE, 4.f);
         }
 
@@ -197,81 +201,80 @@ void ESP::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> E
 
 
     }
-    //Relative radar (shows every ship, not adjusted for player rotation, just north being on top)
-    //Loop through every ship thats in range and on the list (if the local player is within 30 m, put that one on top)
-    //Loop through and make a grid on the left, every grid id 100px by 100px, witch represents a 50m radius centered on the ship.
-    //Draw all holes within 30m of the ship.
-    //Draw the players on the ship (within 50m)
-    //Draw cannonballs near the ship (within 50m, dont draw when below 0 z)
+
     if (this->drawLocalRadar) {
-            float cursorY = 150.f;
-            float radX = 50.f;
-            const float localRadarSize = 100.f;
-            const float localRadarWorldRadius = 5000.f; // 50m in-game units
+        float cursorY = 150.f;
+        float radX = 50.f;
+        const float localRadarSize = 200.f;
+        const float localRadarWorldRadius = 5000.f; // 50m in-game units
+        const float textHeight = 15.f;
+        const float radarPadding = 35.f;
 
-            // A helper lambda to plot a world position onto a specific ship's local radar
-            auto plot_on_local_radar = [&](const FVector& entityPos, const FVector& shipCenterPos, COLOR::Color color, float dotSize) {
-                // Calculate the entity's position relative to the ship
-                FVector relativePos = entityPos - shipCenterPos;
+        // Make a mutable copy to sort ships by distance
+        std::vector<Entity> sortedShips = EnemyShips;
+        std::sort(sortedShips.begin(), sortedShips.end(), [&](const Entity& a, const Entity& b) {
+            return CameraCache.POV.Location.Distance(a.location) < CameraCache.POV.Location.Distance(b.location);
+        });
 
-                // Check if the entity is within the radar's 50m square area
-                if (abs(relativePos.x) > localRadarWorldRadius || abs(relativePos.y) > localRadarWorldRadius) {
-                    return; // Not on this ship's radar
-                }
 
-                // Calculate the scale to map world coordinates (50m radius) to screen coordinates (100px size)
-                // We use localRadarWorldRadius * 2 because the total width/height of the world area is 100m.
-                float scale = localRadarSize / (localRadarWorldRadius * 2.f);
+        auto plot_on_local_radar = [&](const FVector& entityPos, const FVector& shipCenterPos, float radarX, float radarY, COLOR::Color color, float dotSize) {
+            FVector relativePos = entityPos - shipCenterPos;
 
-                // Convert relative world coordinates to radar screen coordinates.
-                // We treat the ship's forward direction (+X) as "Up" on the radar.
-                // We map relative.y to the radar's X-axis and relative.x to the radar's Y-axis.
-                float radarPointX = radX + (localRadarSize / 2.f) + (relativePos.y * scale);
-                float radarPointY = cursorY + (localRadarSize / 2.f) - (relativePos.x * scale); // Subtract because screen Y is top-to-bottom
-
-                // Draw the entity as a small square dot
-                ctx->draw_line(radarPointX - (dotSize / 2.f), radarPointY, radarPointX + (dotSize / 2.f), radarPointY, dotSize, color);
-            };
-
-            for (const auto& ship : EnemyShips) {
-                // Stop drawing radars if we run out of screen space
-                if (cursorY > MonHeight - (localRadarSize + 20.f)) break;
-
-                FVector shipPos = ship.location;
-
-                // --- Draw the radar grid for this ship ---
-                ctx->draw_box(radX, cursorY, localRadarSize, localRadarSize, 1.f, COLOR::TransparentLightWhite);
-                // Draw a small cross in the center to represent the ship's mast/center point
-                ctx->draw_line(radX + localRadarSize / 2.f - 5.f, cursorY + localRadarSize / 2.f, radX + localRadarSize / 2.f + 5.f, cursorY + localRadarSize / 2.f, 1.f, COLOR::TransparentLightWhite);
-                ctx->draw_line(radX + localRadarSize / 2.f, cursorY + localRadarSize / 2.f - 5.f, radX + localRadarSize / 2.f, cursorY + localRadarSize / 2.f + 5.f, 1.f, COLOR::TransparentLightWhite);
-
-                // --- Plot entities on this ship's radar ---
-
-                // Plot Ship Holes (from the global list of all holes)
-                for (const auto& shipHole: this->ShipsHolesPos) {
-                    plot_on_local_radar(shipHole, shipPos, COLOR::GREEN, 4.f);
-                }
-
-                // Plot Enemy Players
-                for (const auto& player : EnemyPlayers) {
-                    plot_on_local_radar(player.location, shipPos, COLOR::RED, 5.f);
-                }
-
-                // Plot Team Players
-                for (const auto& player : TeamPlayers) {
-                    plot_on_local_radar(player.location, shipPos, COLOR::CYAN, 5.f);
-                }
-
-                // Plot Cannonballs
-                for (const auto& cannonBall: this->CannonBalls) {
-                    if (cannonBall.z < -100) continue; // Skip if it's deep underwater
-                    plot_on_local_radar(cannonBall, shipPos, COLOR::ORANGE, 3.f);
-                }
-
-                // Move the Y cursor down for the next radar, with 20px padding
-                cursorY += localRadarSize + 20.f;
+            if (abs(relativePos.x) > localRadarWorldRadius || abs(relativePos.y) > localRadarWorldRadius) {
+                return;
             }
-        }
+
+            float scale = localRadarSize / (localRadarWorldRadius * 2.f);
+            float radarPointX = radarX + (localRadarSize / 2.f) + (relativePos.y * scale);
+            float radarPointY = radarY + (localRadarSize / 2.f) - (relativePos.x * scale);
+
+            ctx->draw_line(radarPointX - (dotSize / 2.f), radarPointY, radarPointX + (dotSize / 2.f), radarPointY, dotSize, color);
+        };
+
+        // --- Iterate through the sorted list of ships ---
+        for (const auto& ship : sortedShips) {
+            // Stop drawing if we run out of screen space
+            if (cursorY > MonHeight - 50.f) break;
+
+            FVector shipPos = ship.location;
+            float distance = CameraCache.POV.Location.Distance(shipPos);
+            std::string shipDisplayName = GetShipBaseName(ship.name);
+            std::string displayText = shipDisplayName + " " + std::to_string((int)(distance / 100.f)) + "m";
+
+            if (distance < 150000.f) {
+
+                draw->draw_text_uncentered(radX, cursorY, displayText, COLOR::WHITE);
+
+                float radarTopY = cursorY + textHeight;
+
+                if (radarTopY > MonHeight - (localRadarSize + 20.f)) break;
+
+                ctx->draw_box(radX, radarTopY, localRadarSize, localRadarSize, 1.f, COLOR::TransparentLightWhite);
+                ctx->draw_line(radX + localRadarSize / 2.f - 5.f, radarTopY + localRadarSize / 2.f, radX + localRadarSize / 2.f + 5.f, radarTopY + localRadarSize / 2.f, 1.f, COLOR::TransparentLightWhite);
+                ctx->draw_line(radX + localRadarSize / 2.f, radarTopY + localRadarSize / 2.f - 5.f, radX + localRadarSize / 2.f, radarTopY + localRadarSize / 2.f + 5.f, 1.f, COLOR::TransparentLightWhite);
+
+                for (const auto& shipHole: this->ShipsHolesPos) {
+                    plot_on_local_radar(shipHole, shipPos, radX, radarTopY, COLOR::GREEN, 4.f);
+                }
+                for (const auto& player : EnemyPlayers) {
+                    plot_on_local_radar(player.location, shipPos, radX, radarTopY, COLOR::RED, 5.f);
+                }
+                for (const auto& player : TeamPlayers) {
+                    plot_on_local_radar(player.location, shipPos, radX, radarTopY, COLOR::CYAN, 5.f);
+                }
+                for (const auto& cannonBall: this->CannonBalls) {
+                    if (cannonBall.z < -100) continue;
+                    plot_on_local_radar(cannonBall, shipPos, radX, radarTopY, COLOR::ORANGE, 3.f);
+                }
+
+                cursorY = radarTopY + localRadarSize + radarPadding;
+
+            } else {
+                draw->draw_text_uncentered(radX, cursorY, displayText, COLOR::WHITE);
+                cursorY += textHeight;
+            }//else
+        }//for ship
+    }// if drawLocalRadar
 }
 
 void ESP::DrawPredictedShipMovement(const FVector& currentPos, FVector& linearVel, const FVector& angularVel, float predictionSeconds, const COLOR::Color pathColor, DrawingContext* ctx, const FMinimalViewInfo& CameraInfo, int MonWidth, int MonHeight)

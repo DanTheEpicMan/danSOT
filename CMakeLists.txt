@@ -1,4 +1,4 @@
-# Minimum required version of CMake
+# Minimum required version of CMakeT
 cmake_minimum_required(VERSION 3.16)
 
 # Project name and languages

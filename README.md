@@ -1,4 +1,63 @@
 # DanSOT
+SOT cheat for linux, below are tested install instructions for Kubuntu
+# Setup
+1) Install linux (I used KUbuntu, whatever distro you choose it needs to use Wayland or have an option (like KUbuntu) to use wayland)
+2) Git clone this repo info a folder
+``` git clone https://github.com/DanTheEpicMan/danSOT.git ```
+NOTE: Depending on the development stage of the project, there can be multiple branches, look at the most recently updated branch in github and switch to it (if you cant figure this out, ask GPT) 
+3) Install dependencies
+```
+sudo apt-get install -y build-essential cmake pkg-config \
+libwayland-dev wayland-protocols \
+libcairo2-dev libpango1.0-dev libfontconfig1-dev
+
+sudo apt-get install -y \
+libwayland-dev \
+libwayland-client0 \
+libwayland-cursor0 \
+libwayland-egl1 \
+wayland-protocols \
+libcairo2-dev \
+pkg-config \
+cmake \
+g++
+
+sudo apt install libgtk-4-dev build-essential
+```
+follow these instructions on installing the layer shell
+https://github.com/wmww/gtk4-layer-shell
+
+4) Build from the cmake file
+```
+cmake .
+```
+5) Build the project (run every time you update the code)
+```
+cmake -j14
+```
+
+## Using
+1) Start the hack (after the game is started, this can be done at any point i.e. in the menu or on the ship)
+```
+sudo ./danSOT
+```
+2) Start the overlay
+One monitor:
+```
+./OverlayApp
+```
+Multiple Monitors (NOTE: In my experience, monitor numbers stay the same and are numbered left to right):
+```
+./OverlayApp (monitor number here)
+
+Examples:
+./OverlayApp 0
+./OverlayApp 1
+./OverlayApp 2
+```
+
+# Old info
+# DanSOT
 Run: cmake .
 
 ## Linux

@@ -30,7 +30,8 @@ public:
     std::string DrawHolesAndUpdateName(uintptr_t shipAddr, FMinimalViewInfo CamPOV, std::string shipName, std::vector<Entity> otherObj);
     std::string GetShipBaseName(std::string gameName);
     void DrawShip(std::vector<Entity> ShipList, std::vector<Entity> OtherEntities, FMinimalViewInfo CamPOV, COLOR::Color ShipDisplayInfo);
-private:
+
+    private:
     bool drawCrosshair = true;
     bool drawRadar = true; double radarScale = 400; //max dist
     bool drawLocalRadar = true;
@@ -81,6 +82,7 @@ private:
 private:
     std::vector<FVector> ShipsHolesPos; //need to enable draw of holes (will give outline of ship)
     std::vector<FVector> CannonBalls;//need to enable draw of projectiles
+    std::vector<FVector> Cannons, Wheels, Masts;
     int ScrWidth = 0, ScrHeight = 0;
     DrawingContext* draw = nullptr;
 

@@ -127,88 +127,89 @@ void PlayerAimbot::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<
     }
 
     bool conditionsMetForShooting = false;
-    if ((this->runAimbot && inpMngr->isKeyDown(this->aimbotKeyCode)) || (this->runAimAndShootKey && inpMngr->isKeyDown(this->aimAndShootKeyCode))) {
-        float deltaX = bestTargetScreenCoords.x - (MonWidth / 2.0f);
-        float deltaY = bestTargetScreenCoords.y - (MonHeight / 2.0f);
+    if (bestTargetLocation.x != -1 || bestTargetLocation.y != -1 || bestTargetLocation.z != -1) {
+        if ((this->runAimbot && inpMngr->isKeyDown(this->aimbotKeyCode)) || (this->runAimAndShootKey && inpMngr->isKeyDown(this->aimAndShootKeyCode))) {
+            float deltaX = bestTargetScreenCoords.x - (MonWidth / 2.0f);
+            float deltaY = bestTargetScreenCoords.y - (MonHeight / 2.0f);
 
-        // Aims at full body (also give info for auto shoot)
-        Coords head = WorldToScreen({bestTargetLocation.x, bestTargetLocation.y, bestTargetLocation.z + 35}, CameraCache.POV, MonWidth, MonHeight);
-        Coords feet = WorldToScreen({bestTargetLocation.x, bestTargetLocation.y, bestTargetLocation.z - 25}, CameraCache.POV, MonWidth, MonHeight);
-        Coords left = WorldToScreen({bestTargetLocation.x - 5, bestTargetLocation.y, bestTargetLocation.z}, CameraCache.POV, MonWidth, MonHeight);
-        Coords right = WorldToScreen({bestTargetLocation.x + 5, bestTargetLocation.y, bestTargetLocation.z}, CameraCache.POV, MonWidth, MonHeight);
+            // Aims at full body (also give info for auto shoot)
+            Coords head = WorldToScreen({bestTargetLocation.x, bestTargetLocation.y, bestTargetLocation.z + 35}, CameraCache.POV, MonWidth, MonHeight);
+            Coords feet = WorldToScreen({bestTargetLocation.x, bestTargetLocation.y, bestTargetLocation.z - 25}, CameraCache.POV, MonWidth, MonHeight);
+            Coords left = WorldToScreen({bestTargetLocation.x - 5, bestTargetLocation.y, bestTargetLocation.z}, CameraCache.POV, MonWidth, MonHeight);
+            Coords right = WorldToScreen({bestTargetLocation.x + 5, bestTargetLocation.y, bestTargetLocation.z}, CameraCache.POV, MonWidth, MonHeight);
 
+            if (!this->aimAtCenter) {
+                float screenCenterY = MonHeight / 2.0f;
+                float screenCenterX = MonWidth / 2.0f;
 
-        if (!this->aimAtCenter) {
-            float screenCenterY = MonHeight / 2.0f;
-            float screenCenterX = MonWidth / 2.0f;
+                if (!(head.y > feet.y)) { //wierd edge case
+                    //clamp crosshair y, to be within player
+                    if (screenCenterY < head.y) { //crosshair above
+                        deltaY = head.y - screenCenterY;
+                    } else if (screenCenterY > feet.y) {
+                        deltaY = feet.y - screenCenterY;
+                    } else {
+                        deltaY = 0; //crosshair is within player bounds
+                    }
+                }
 
-            if (!(head.y > feet.y)) { //wierd edge case
-                //clamp crosshair y, to be within player
-                if (screenCenterY < head.y) { //crosshair above
-                    deltaY = head.y - screenCenterY;
-                } else if (screenCenterY > feet.y) {
-                    deltaY = feet.y - screenCenterY;
-                } else {
-                    deltaY = 0; //crosshair is within player bounds
+                if (!(left.x < right.x)) { //wierd edge case
+                    //clamp crosshair x, to be within player
+                    if (screenCenterX < left.x) { //crosshair left
+                        deltaX = left.x - screenCenterX;
+                    } else if (screenCenterX > right.x) {
+                        deltaX = right.x - screenCenterX;
+                    } else {
+                        deltaX = 0; //crosshair is within player bounds
+                    }
                 }
             }
 
-            if (!(left.x < right.x)) { //wierd edge case
-                //clamp crosshair x, to be within player
-                if (screenCenterX < left.x) { //crosshair left
-                    deltaX = left.x - screenCenterX;
-                } else if (screenCenterX > right.x) {
-                    deltaX = right.x - screenCenterX;
+            if (!coordsOnScreen({(int)((MonWidth / 2.0f) + deltaX), (int)((MonHeight / 2.0f) + deltaY)}, MonWidth, MonHeight)) {
+                deltaX = 0; deltaY = 0;
+            }
+
+            if (std::abs(deltaX) > AIM_DEADZONE || std::abs(deltaY) > AIM_DEADZONE) {
+                float dynamic_smoothness; //faster when player is closer
+                if (worldDistanceTarget < this->MIN_SMOOTH_DIST) {
+                    dynamic_smoothness = this->MIN_SMOOTHNESS;
+                } else if (worldDistanceTarget > this->MAX_SMOOTH_DIST) {
+                    dynamic_smoothness = this->MAX_SMOOTHNESS;
                 } else {
-                    deltaX = 0; //crosshair is within player bounds
+                    float ratio = (worldDistanceTarget - this->MIN_SMOOTH_DIST) / (this->MAX_SMOOTH_DIST - this->MIN_SMOOTH_DIST);
+                    dynamic_smoothness = this->MIN_SMOOTHNESS + ratio * (this->MAX_SMOOTHNESS - this->MIN_SMOOTHNESS);
                 }
-            }
-        }
 
-        if (!coordsOnScreen({(int)((MonWidth / 2.0f) + deltaX), (int)((MonHeight / 2.0f) + deltaY)}, MonWidth, MonHeight)) {
-            deltaX = 0; deltaY = 0;
-        }
+                float moveX = deltaX / dynamic_smoothness;
+                float moveY = deltaY / dynamic_smoothness;
 
-        if (std::abs(deltaX) > AIM_DEADZONE || std::abs(deltaY) > AIM_DEADZONE) {
-            float dynamic_smoothness; //faster when player is closer
-            if (worldDistanceTarget < this->MIN_SMOOTH_DIST) {
-                dynamic_smoothness = this->MIN_SMOOTHNESS;
-            } else if (worldDistanceTarget > this->MAX_SMOOTH_DIST) {
-                dynamic_smoothness = this->MAX_SMOOTHNESS;
-            } else {
-                float ratio = (worldDistanceTarget - this->MIN_SMOOTH_DIST) / (this->MAX_SMOOTH_DIST - this->MIN_SMOOTH_DIST);
-                dynamic_smoothness = this->MIN_SMOOTHNESS + ratio * (this->MAX_SMOOTHNESS - this->MIN_SMOOTHNESS);
-            }
+                this->buildUpAimX += moveX;
+                this->buildUpAimY += moveY;
 
-            float moveX = deltaX / dynamic_smoothness;
-            float moveY = deltaY / dynamic_smoothness;
+                int finalMoveX = static_cast<int>(std::round(this->buildUpAimX));
+                int finalMoveY = static_cast<int>(std::round(this->buildUpAimY));
 
-            this->buildUpAimX += moveX;
-            this->buildUpAimY += moveY;
+                if (this->buildUpAimX != 0 || this->buildUpAimY != 0) {
+                    this->buildUpAimX -= finalMoveX; //Reset the build up
+                    this->buildUpAimY -= finalMoveY;
 
-            int finalMoveX = static_cast<int>(std::round(this->buildUpAimX));
-            int finalMoveY = static_cast<int>(std::round(this->buildUpAimY));
+                    inpMngr->moveMouseRelative(finalMoveX, finalMoveY);
+                }
+                if (this->runAimAndShootKey && inpMngr->isKeyDown(this->aimAndShootKeyCode)) {
+                    // Check if crosshair X is within the player's horizontal bounds
+                    bool xIsOnTarget = (left.x < MonWidth / 2.0f) && (right.x > MonWidth / 2.0f);
+                    // Check if crosshair Y is within the player's vertical bounds
+                    bool yIsOnTarget = (head.y < MonHeight / 2.0f) && (feet.y > MonHeight / 2.0f);
 
-            if (this->buildUpAimX != 0 || this->buildUpAimY != 0) {
-                this->buildUpAimX -= finalMoveX; //Reset the build up
-                this->buildUpAimY -= finalMoveY;
-
-                inpMngr->moveMouseRelative(finalMoveX, finalMoveY);
-            }
-            if (this->runAimAndShootKey && inpMngr->isKeyDown(this->aimAndShootKeyCode)) {
-                // Check if crosshair X is within the player's horizontal bounds
-                bool xIsOnTarget = (left.x < MonWidth / 2.0f) && (right.x > MonWidth / 2.0f);
-                // Check if crosshair Y is within the player's vertical bounds
-                bool yIsOnTarget = (head.y < MonHeight / 2.0f) && (feet.y > MonHeight / 2.0f);
-
-                if ((xIsOnTarget && yIsOnTarget) || ((int)moveX == 0 && (int)moveY == 0)) {
-                    std::cout << "xIsOnTarget: " << xIsOnTarget << ", yIsOnTarget: " << yIsOnTarget << std::endl;
-                    std::cout << "x: " << (int)moveX << ", y: " << (int)moveY << std::endl;
-                    conditionsMetForShooting = true;
-                } //if on player
-            } // if autoshoot + key
-        } // if not in deadzone
-    } // if aimbot or aim and shoot key pressed
+                    if ((xIsOnTarget && yIsOnTarget) || ((int)moveX == 0 && (int)moveY == 0)) {
+                        std::cout << "xIsOnTarget: " << xIsOnTarget << ", yIsOnTarget: " << yIsOnTarget << std::endl;
+                        std::cout << "x: " << (int)moveX << ", y: " << (int)moveY << std::endl;
+                        conditionsMetForShooting = true;
+                    } //if on player
+                } // if autoshoot + key
+            } // if not in deadzone
+        } // if aimbot or aim and shoot key pressed
+    }
     HandleAutoShoot(conditionsMetForShooting, inpMngr);
 }
 

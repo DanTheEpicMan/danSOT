@@ -126,7 +126,7 @@ public:
    }
     //centers text
     void draw_text(float x, float y, const std::string& text, COLOR::Color color) {
-       if (x == -1 && y == -1) return;
+       if (x == -1 || y == -1) return;
        if (!write_buffer || write_buffer->command_count >= MAX_COMMANDS) return;
 
        float text_width = text.length() * 6.0f/*Average Character Width*/;
