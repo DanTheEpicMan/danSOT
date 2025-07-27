@@ -319,22 +319,57 @@ void CannonAimbot::AimAndDrawShipComponents(const Entity& ship, const FVector& s
         }
     };
 
-    // Draw indicators for each component type.
-    for (const auto& hole : activeHoles)       aimAndDrawPoint(hole, COLOR::RED,   "",  true);
-    for (const auto& hole : inactiveHoles)     aimAndDrawPoint(hole, COLOR::GREEN, "",  true);
-    for (const auto& cannon : cannons)         aimAndDrawPoint(cannon, COLOR::YELLOW, "[C]", false);
-    if (wheelLocation.Size() > 0)              aimAndDrawPoint(wheelLocation, COLOR::YELLOW, "[W]", false);
+    // Apply offsets for holes
+    for (const auto& hole : activeHoles) {
+        FVector directionToHole = hole - ship.location;
+        directionToHole.z = 0;
+        directionToHole = directionToHole.unit();
+        FVector offsetHolePos = hole + (directionToHole * this->holeOutShift);
+        offsetHolePos.z += this->holeShift; // Apply vertical shift for holes
+        aimAndDrawPoint(offsetHolePos, COLOR::RED, "", true);
+    }
+    for (const auto& hole : inactiveHoles) {
+        FVector directionToHole = hole - ship.location;
+        directionToHole.z = 0;
+        directionToHole = directionToHole.unit();
+        FVector offsetHolePos = hole + (directionToHole * this->holeOutShift);
+        offsetHolePos.z += this->holeShift; // Apply vertical shift for holes
+        aimAndDrawPoint(offsetHolePos, COLOR::GREEN, "", true);
+    }
 
-    // Handle drawing for masts, which require a line.
+    // Apply offsets for cannons and wheel
+    for (auto cannon : cannons) {
+        cannon.z += this->cannonANDWheelOffset; // Apply vertical shift for cannons
+        if (cannon.Distance(CamInfo.Location) < 200) continue; //if cannon your on, skip
+        aimAndDrawPoint(cannon, COLOR::YELLOW, "[C]", false);
+    }
+    if (wheelLocation.Size() > 0) {
+        FVector offsetWheelLocation = wheelLocation;
+        offsetWheelLocation.z += this->cannonANDWheelOffset; // Apply vertical shift for wheel
+        aimAndDrawPoint(offsetWheelLocation, COLOR::YELLOW, "[W]", false);
+    }
+
+    // Correctly calculate aiming solution for both base and top of mast
     for (const auto& mastBase : masts) {
         FVector futureMastBase = PredictComponentFuturePosition(shipCenterFuturePos, shipInitialRotation, shipAngularVel, timeOfFlight, mastBase, ship.location);
         FVector futureMastTop = PredictComponentFuturePosition(shipCenterFuturePos, shipInitialRotation, shipAngularVel, timeOfFlight, mastBase + FVector(0, 0, 1500), ship.location); // 15m up
 
-        FRotator solLow, solHigh;
-        if (AimAtStaticTarget(futureMastBase, fProjectileSpeed, fProjectileGravityScalar, oSourcePos, solLow, solHigh) > 0) {
-            // Project the base and top points of the mast to the screen
-            Coords screenBase = WorldToScreen(futureMastBase, this->CamInfo, MonWidth, MonHeight);
-            Coords screenTop = WorldToScreen(futureMastTop, this->CamInfo, MonWidth, MonHeight);
+        FRotator baseRotLow, baseRotHigh;
+        FRotator topRotLow, topRotHigh;
+
+        bool baseSolutionFound = AimAtStaticTarget(futureMastBase, fProjectileSpeed, fProjectileGravityScalar, oSourcePos, baseRotLow, baseRotHigh) > 0;
+        bool topSolutionFound = AimAtStaticTarget(futureMastTop, fProjectileSpeed, fProjectileGravityScalar, oSourcePos, topRotLow, topRotHigh) > 0;
+
+        if (baseSolutionFound && topSolutionFound) {
+            // Get aiming direction for the base of the mast
+            FVector baseAimDir = RotatorToVector(baseRotLow);
+            FVector baseAimWorldPos = this->CamInfo.Location + (baseAimDir * 10000.f);
+            Coords screenBase = WorldToScreen(baseAimWorldPos, this->CamInfo, MonWidth, MonHeight);
+
+            // Get aiming direction for the top of the mast
+            FVector topAimDir = RotatorToVector(topRotLow);
+            FVector topAimWorldPos = this->CamInfo.Location + (topAimDir * 10000.f);
+            Coords screenTop = WorldToScreen(topAimWorldPos, this->CamInfo, MonWidth, MonHeight);
 
             if (screenBase.x > 0 && screenBase.y > 0 && screenTop.x > 0 && screenTop.y > 0) {
                 this->draw->draw_line(screenBase.x, screenBase.y, screenTop.x, screenTop.y, 2.0f, COLOR::WHITE);
@@ -374,12 +409,11 @@ void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerContro
         shipLinearVel.z = 0;
 
         //Adjust for the actual true coordinates or where you need to hit to make a hole
-        shipCoords.z -= 200;
 
         if (CameraCache.POV.Location.Distance(shipCoords) > 600 * 100) continue; //greater than 600m away
 
         FRotator oOutLow, oOutHigh;
-        int solutions = AimAtShip({shipCoords.x, shipCoords.y, shipCoords.z - 70}, shipLinearVel, shipAngularVel, CameraCache.POV.Location, localPlayerVelocity, this->lastLoadedProjectileSpeed, this->lastLoadedProjectileGravityScale, oOutLow, oOutHigh);
+        int solutions = AimAtShip({shipCoords.x, shipCoords.y, static_cast<float>(shipCoords.z + this->centerShift)}, shipLinearVel, shipAngularVel, CameraCache.POV.Location, localPlayerVelocity, this->lastLoadedProjectileSpeed, this->lastLoadedProjectileGravityScale, oOutLow, oOutHigh);
 
         if (solutions > 0)
         {

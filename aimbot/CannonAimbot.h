@@ -44,6 +44,12 @@ private:
     float lastLoadedProjectileSpeed = 5700.0f, lastLoadedProjectileGravityScale = 0.791f;
     DrawingContext *draw = nullptr;
     FMinimalViewInfo CamInfo = {{0,0,0},{0,0,0}, {0}, 0, 0, 0, 0, 0, 0,};
+
+
+    double centerShift = -130; //How much to move the center of ship down by to get an accurate shot
+    double holeShift = -70; //How much to move the holes down to get an accurate shot
+    double holeOutShift = 100; //How much to move the holes to the side so they dont protrude from the walls
+    double cannonANDWheelOffset = 100;  //How much to move them up (either to one-ball or just hit)
 };
 
 #endif //CANNONAIMBOT_H
