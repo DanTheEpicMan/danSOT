@@ -25,7 +25,6 @@ void ESP::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> E
 
 
 
-
     if (this->drawMerms || this->shipwrecks || this->drawWorldEvents || this->drawRowboats || this->drawStorm ||
         this->drawGoodItems || this->drawGoodLoots || this->drawProjectiles || this->drawAIEnemies ||
         this->drawGoldHoardersLoot || this->drawOrderOfSoulsLoot || this->drawMerchantAllianceLoot || this->drawAthenaLoot || this->drawAllFactionLoot || this->drawMicsLoot) {
@@ -63,7 +62,7 @@ void ESP::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> E
 
             COLOR::Color drawColor = COLOR::WHITE;
             if (this->drawMerms && (entity.name == "BP_Mermaid_C" || entity.name == "BP_LootStorage_Retrieve_C")) {
-                itemName = "BP_Mermaid_C";
+                itemName = "Mermaid";
                 if (entity.name == "BP_LootStorage_Retrieve_C") itemName = "Loot Mermade"; //Holds loot when in shrines
                 drawColor = COLOR::MAGENTA;
                 itemName += distanceString;

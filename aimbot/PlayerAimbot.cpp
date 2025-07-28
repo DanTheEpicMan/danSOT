@@ -132,8 +132,13 @@ void PlayerAimbot::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<
             float deltaX = bestTargetScreenCoords.x - (MonWidth / 2.0f);
             float deltaY = bestTargetScreenCoords.y - (MonHeight / 2.0f);
 
+            int dynaicHeadHieght = 35; //default when normally aiming
+            if (CameraCache.POV.Rotation.y >= -90 && CameraCache.POV.Rotation.y < -60) {//if looking down a lot (shooting at border)
+                dynaicHeadHieght += 50;
+            }
+
             // Aims at full body (also give info for auto shoot)
-            Coords head = WorldToScreen({bestTargetLocation.x, bestTargetLocation.y, bestTargetLocation.z + 35}, CameraCache.POV, MonWidth, MonHeight);
+            Coords head = WorldToScreen({bestTargetLocation.x, bestTargetLocation.y, bestTargetLocation.z + dynaicHeadHieght}, CameraCache.POV, MonWidth, MonHeight);
             Coords feet = WorldToScreen({bestTargetLocation.x, bestTargetLocation.y, bestTargetLocation.z - 25}, CameraCache.POV, MonWidth, MonHeight);
             Coords left = WorldToScreen({bestTargetLocation.x - 5, bestTargetLocation.y, bestTargetLocation.z}, CameraCache.POV, MonWidth, MonHeight);
             Coords right = WorldToScreen({bestTargetLocation.x + 5, bestTargetLocation.y, bestTargetLocation.z}, CameraCache.POV, MonWidth, MonHeight);

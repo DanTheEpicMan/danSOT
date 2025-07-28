@@ -50,6 +50,20 @@ namespace Offsets {
                         inline ptr LoadableComponent = 0x538; //Read from Pawn, gives LoadableComponent struct
                             inline ptr LoadableComponentState = 0x178; inline ptr LoadedItem = 0x8; //Read from LoadableComponent, gives LoadableComponentState struct, 0x8 at that struct gives Object of loaded item
 
+                        //Pawn for wheel
+                        inline ptr RepairableComponentWest = 0x678; //Read from pawn of wheel, followed by ...South, ...East at offsets of 0x8
+                            inline ptr DamageLevel_RC = 0x22C;//reading from type of RepairableComponent
+
+                        //Pawn for Mast
+                        inline ptr RepairableComponentFirst = 0x430; //Read from pawn of mast, followed by ...Second, ...Third at offsets of 0x8
+                            // inline ptr DamageLevel_RC = 0x22C;//reading from type of RepairableComponent
+
+                        //Pawn for Anchor
+                        inline ptr CapstanArms = 0x440; //Read from pawn of Capstan, array of capstan arms
+                            inline ptr RepairableComponent = 0x510; //Read from pawn of arms
+                                // inline ptr DamageLevel_RC = 0x22C;//reading from type of RepairableComponent
+
+
                     //PlayerController Offsets
                     inline ptr PlayerCameraManager = 0x430; //Read from PlayerController
                         inline ptr CameraCachePrivate = 0x410; //Read from PlayerCameraManager, contains FCameraCacheEntry struct

@@ -124,6 +124,10 @@ int main() {
             if (ActorRootComponent == 0x0) continue;
             ent.location = ReadMemory<FVector>(ActorRootComponent + Offsets::RelativeLocation);
 
+            ptr playerEntityRootComponent  = ReadMemory<ptr>(ent.pawn + Offsets::RootComponent);
+            FTransform playerEntityComponentToWorld = ReadMemory<FTransform>(playerEntityRootComponent + Offsets::ComponentToWorld);
+            ent.location = playerEntityComponentToWorld.Translation;
+
             //TODO: ID buring blade in this.
             if (ent.name.find("ShipTemplate_C") != std::string::npos ||
                 ent.name.find("ShipNetProxy_C") != std::string::npos ||
@@ -131,9 +135,7 @@ int main() {
                 EnemyShips.push_back(ent);
             } else if (ent.name == "BP_PlayerPirate_C"/* || ent.name.find("SkeletonPawnBase") != std::string::npos*/) { //uncomment for testing on skeleton
 
-                ptr playerEntityRootComponent  = ReadMemory<ptr>(ent.pawn + Offsets::RootComponent);
-                FTransform playerEntityComponentToWorld = ReadMemory<FTransform>(playerEntityRootComponent + Offsets::ComponentToWorld);
-                ent.location = playerEntityComponentToWorld.Translation;
+
 
                 //Weeding out people on same team
                 ptr PlayerStateFromPawn = ReadMemory<ptr>(entPawn + Offsets::PlayerState);

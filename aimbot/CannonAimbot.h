@@ -37,9 +37,10 @@ private:
     uintptr_t GetCannonActor(uintptr_t LPawn, uintptr_t GNames);
     void GetProjectileInfo(uintptr_t CannonActor, uintptr_t GNames, float &outProjectileSpeed, float &outProjectileGravityScale);
     void GetShipInfo(uintptr_t ShipActor, FVector &outShipLinearVel, FVector &outShipAngularVel, FRotator &outShipInitialRotation);
-    void GetShipComponents(Entity ShipActor, std::vector<Entity> &OtherEntities, std::vector<FVector> &outShipActiveHoles, std::vector<FVector> &outShipInactiveHoles, std::vector<FVector> &outShipMasts, std::vector<FVector> &outCannonLocation, FVector &outShipWheel);
+    void GetShipComponents(Entity ShipActor, std::vector<Entity> &OtherEntities, std::vector<FVector> &outShipActiveHoles, std::vector<FVector> &outShipInactiveHoles, std::vector<FVector> &outShipMasts, std::vector<int> &outShipMastsDamage, std::vector<FVector> &outCannonLocation, FVector &outShipWheel, int &outShipWheelDamage, FVector &outShipAnchor, int &outShipAnchorDamage);
+    // void GetShipComponentsDamageLevels(Entity ShipActor, std::vector<Entity> OtherEntities, int &wheelDamageLevel, std::vector<int> &mastsDamageLevel, int &anchorDamageLevel);
 
-    void AimAndDrawShipComponents(const Entity& ship, const FVector& shipLinearVel, const FVector& shipAngularVel, const FRotator& shipInitialRotation, const FVector& oSourcePos, const FVector& oSourceVelocity, float fProjectileSpeed, float fProjectileGravityScalar, const std::vector<Entity>& OtherEntities);
+    void AimAndDrawShipComponents(const Entity& ship, const FVector& shipLinearVel, const FVector& shipAngularVel, const FRotator& shipInitialRotation, const FVector& oSourcePos, const FVector& oSourceVelocity, float fProjectileSpeed, float fProjectileGravityScalar, const std::vector<Entity>& OtherEntities, const std::vector<Entity>& Enemies);
 
     float lastLoadedProjectileSpeed = 5700.0f, lastLoadedProjectileGravityScale = 0.791f;
     DrawingContext *draw = nullptr;
@@ -49,7 +50,8 @@ private:
     double centerShift = -130; //How much to move the center of ship down by to get an accurate shot
     double holeShift = -70; //How much to move the holes down to get an accurate shot
     double holeOutShift = 100; //How much to move the holes to the side so they dont protrude from the walls
-    double cannonANDWheelOffset = 100;  //How much to move them up (either to one-ball or just hit)
+    double cannonANDWheelANDAnchorOffset = 100;  //How much to move them up (either to one-ball or just hit)
+
 };
 
 #endif //CANNONAIMBOT_H

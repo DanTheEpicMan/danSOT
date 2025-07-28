@@ -269,7 +269,7 @@ FVector PredictComponentFuturePosition( const FVector& shipCenterFuturePos, cons
 
 void CannonAimbot::AimAndDrawShipComponents(const Entity& ship, const FVector& shipLinearVel, const FVector& shipAngularVel,
     const FRotator& shipInitialRotation, const FVector& oSourcePos, const FVector& oSourceVelocity,
-    float fProjectileSpeed, float fProjectileGravityScalar, const std::vector<Entity>& OtherEntities)
+    float fProjectileSpeed, float fProjectileGravityScalar, const std::vector<Entity>& OtherEntities, const std::vector<Entity>& Enemies)
 {
     // Use the quartic solver to find the time of flight to the moving ship's center.
     // This gives us the baseline time `t` needed to predict the ship's future state.
@@ -301,11 +301,13 @@ void CannonAimbot::AimAndDrawShipComponents(const Entity& ship, const FVector& s
 
     // Get all the component locations from the game world.
     std::vector<FVector> activeHoles, inactiveHoles, masts, cannons;
-    FVector wheelLocation;
-    GetShipComponents(ship, const_cast<std::vector<Entity>&>(OtherEntities), activeHoles, inactiveHoles, masts, cannons, wheelLocation);
+    FVector wheelLocation, anchorLocation;
+    int wheelDamage, anchorDamage;
+    std::vector<int> mastsDamage;
+    GetShipComponents(ship, const_cast<std::vector<Entity>&>(OtherEntities), activeHoles, inactiveHoles, masts, mastsDamage, cannons, wheelLocation, wheelDamage, anchorLocation, anchorDamage);
 
     // Lambda function to handle the logic for aiming and drawing a single point.
-    auto aimAndDrawPoint = [&](const FVector& initialPos, COLOR::Color color, const char* text, bool isX) {
+    auto aimPoint = [&](const FVector& initialPos) {
         FVector futurePos = PredictComponentFuturePosition(shipCenterFuturePos, shipInitialRotation, shipAngularVel, timeOfFlight, initialPos, ship.location);
         FRotator solLow, solHigh;
         if (AimAtStaticTarget(futurePos, fProjectileSpeed, fProjectileGravityScalar, oSourcePos, solLow, solHigh) > 0) {
@@ -313,10 +315,11 @@ void CannonAimbot::AimAndDrawShipComponents(const Entity& ship, const FVector& s
             FVector aimWorldPos = this->CamInfo.Location + (aimDir * 10000.f); // Project point far out for screen calculation
             Coords screenPos = WorldToScreen(aimWorldPos, this->CamInfo, MonWidth, MonHeight);
             if (screenPos.x > 0 && screenPos.y > 0) {
-                if (isX) drawX(this->draw, screenPos, 5, color);
-                else this->draw->draw_text(screenPos.x, screenPos.y, text, color);
+                return screenPos;
             }
+            return Coords(0, 0);
         }
+        return Coords(-1, -1);
     };
 
     // Apply offsets for holes
@@ -326,7 +329,8 @@ void CannonAimbot::AimAndDrawShipComponents(const Entity& ship, const FVector& s
         directionToHole = directionToHole.unit();
         FVector offsetHolePos = hole + (directionToHole * this->holeOutShift);
         offsetHolePos.z += this->holeShift; // Apply vertical shift for holes
-        aimAndDrawPoint(offsetHolePos, COLOR::RED, "", true);
+        Coords holePos = aimPoint(offsetHolePos);
+        drawX(this->draw, holePos, 5, COLOR::BLUE);
     }
     for (const auto& hole : inactiveHoles) {
         FVector directionToHole = hole - ship.location;
@@ -334,25 +338,42 @@ void CannonAimbot::AimAndDrawShipComponents(const Entity& ship, const FVector& s
         directionToHole = directionToHole.unit();
         FVector offsetHolePos = hole + (directionToHole * this->holeOutShift);
         offsetHolePos.z += this->holeShift; // Apply vertical shift for holes
-        aimAndDrawPoint(offsetHolePos, COLOR::GREEN, "", true);
+        Coords HolePos = aimPoint(offsetHolePos);
+        drawX(this->draw, HolePos, 5, COLOR::GREEN);
     }
 
     // Apply offsets for cannons and wheel
     for (auto cannon : cannons) {
-        cannon.z += this->cannonANDWheelOffset; // Apply vertical shift for cannons
+        cannon.z += this->cannonANDWheelANDAnchorOffset; // Apply vertical shift for cannons
         if (cannon.Distance(CamInfo.Location) < 200) continue; //if cannon your on, skip
-        aimAndDrawPoint(cannon, COLOR::YELLOW, "[C]", false);
+        Coords cannonPos = aimPoint(cannon);
+        this->draw->draw_text(cannonPos.x, cannonPos.y, "[C]",COLOR::YELLOW);
     }
     if (wheelLocation.Size() > 0) {
         FVector offsetWheelLocation = wheelLocation;
-        offsetWheelLocation.z += this->cannonANDWheelOffset; // Apply vertical shift for wheel
-        aimAndDrawPoint(offsetWheelLocation, COLOR::YELLOW, "[W]", false);
+        offsetWheelLocation.z += this->cannonANDWheelANDAnchorOffset; // Apply vertical shift for wheel
+        Coords wheelPos = aimPoint(offsetWheelLocation);
+        this->draw->draw_text(wheelPos.x, wheelPos.y, "[W]", COLOR::YELLOW);
+        this->draw->draw_text(wheelPos.x, wheelPos.y + 50, std::to_string(wheelDamage)+"/3", COLOR::YELLOW);
+    }
+    if (anchorLocation.Size() > 0) {
+        FVector offsetAnchorLocation = anchorLocation;
+        offsetAnchorLocation.z += this->cannonANDWheelANDAnchorOffset;
+        Coords anchorPos = aimPoint(offsetAnchorLocation);
+        this->draw->draw_text(anchorPos.x, anchorPos.y, "[A]", COLOR::YELLOW);
+        this->draw->draw_text(anchorPos.x, anchorPos.y + 50, std::to_string(anchorDamage)+"/3", COLOR::YELLOW);
+    }
+
+    //Apply for players, does not account for player velocity (would be very inaccurate)
+    for (auto player: Enemies) {
+        Coords playerPos = aimPoint(player.location);
+        drawX(this->draw, playerPos, 5, COLOR::RED);
     }
 
     // Correctly calculate aiming solution for both base and top of mast
-    for (const auto& mastBase : masts) {
-        FVector futureMastBase = PredictComponentFuturePosition(shipCenterFuturePos, shipInitialRotation, shipAngularVel, timeOfFlight, mastBase, ship.location);
-        FVector futureMastTop = PredictComponentFuturePosition(shipCenterFuturePos, shipInitialRotation, shipAngularVel, timeOfFlight, mastBase + FVector(0, 0, 1500), ship.location); // 15m up
+    for (int i = 0; i < masts.size(); i++) {
+        FVector futureMastBase = PredictComponentFuturePosition(shipCenterFuturePos, shipInitialRotation, shipAngularVel, timeOfFlight, masts[i], ship.location);
+        FVector futureMastTop = PredictComponentFuturePosition(shipCenterFuturePos, shipInitialRotation, shipAngularVel, timeOfFlight, masts[i] + FVector(0, 0, 1500), ship.location); // 15m up
 
         FRotator baseRotLow, baseRotHigh;
         FRotator topRotLow, topRotHigh;
@@ -373,6 +394,7 @@ void CannonAimbot::AimAndDrawShipComponents(const Entity& ship, const FVector& s
 
             if (screenBase.x > 0 && screenBase.y > 0 && screenTop.x > 0 && screenTop.y > 0) {
                 this->draw->draw_line(screenBase.x, screenBase.y, screenTop.x, screenTop.y, 2.0f, COLOR::WHITE);
+                this->draw->draw_text(screenTop.x, screenTop.y, std::to_string(mastsDamage[i])+"/3", COLOR::YELLOW);
             }
         }
     }
@@ -380,7 +402,7 @@ void CannonAimbot::AimAndDrawShipComponents(const Entity& ship, const FVector& s
 
 void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> ships, std::vector<Entity> Enemies, std::vector<Entity> OtherEntities, DrawingContext *ctx, InputManager *inpMngr) {
      uintptr_t cannonActor = GetCannonActor(LPawn, GNames);
-    // if (cannonActor == 0x0) return;
+    if (cannonActor == 0x0) return;
 
     this->draw = ctx;
 
@@ -430,7 +452,7 @@ void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerContro
         }
 
         AimAndDrawShipComponents(ship, shipLinearVel, shipAngularVel, shipInitialRotation, CameraCache.POV.Location,
-            localPlayerVelocity, this->lastLoadedProjectileSpeed, this->lastLoadedProjectileGravityScale, OtherEntities);
+            localPlayerVelocity, this->lastLoadedProjectileSpeed, this->lastLoadedProjectileGravityScale, OtherEntities, Enemies);
     }
 }
 
@@ -473,7 +495,11 @@ void CannonAimbot::GetShipInfo(uintptr_t ShipPawn, FVector &outShipLinearVel, FV
     outShipInitialRotation = ReadMemory<FRotator>(RepMovement_Address + Offsets::Rotation);
 }
 
-void CannonAimbot::GetShipComponents(Entity ShipActor, std::vector<Entity> &OtherEntities, std::vector<FVector> &outShipActiveHoles, std::vector<FVector> &outShipInactiveHoles, std::vector<FVector> &outShipMasts, std::vector<FVector> &outCannonLocation, FVector &outShipWheel) {
+int GetDamageLevel(uintptr_t RepairableComponentAddress) {
+    return ReadMemory<int>(RepairableComponentAddress + Offsets::DamageLevel_RC);
+}
+
+void CannonAimbot::GetShipComponents(Entity ShipActor, std::vector<Entity> &OtherEntities, std::vector<FVector> &outShipActiveHoles, std::vector<FVector> &outShipInactiveHoles, std::vector<FVector> &outShipMasts, std::vector<int> &outShipMastsDamage, std::vector<FVector> &outCannonLocation, FVector &outShipWheel, int &outShipWheelDamage, FVector &outShipAnchor, int &outShipAnchorDamage) {
     for (int i = 0; i < OtherEntities.size(); i++) {
         Entity &ent = OtherEntities[i];
     	ptr EntityRootComponent  = ReadMemory<ptr>(ent.pawn + Offsets::RootComponent);
@@ -482,10 +508,28 @@ void CannonAimbot::GetShipComponents(Entity ShipActor, std::vector<Entity> &Othe
         if ((ent.location - ShipActor.location).Size() > 4000.0f) continue;
         if (ent.name == "BP_SmallShip_Mast_C" || ent.name == "BP_large_mast_mizzen_C" || ent.name == "BP_large_mast_main_C" || ent.name == "BP_medium_mast_fore_C" || ent.name == "BP_medium_mast_main_C") {
             outShipMasts.push_back(ent.location);
+            ptr RepComp1 = ReadMemory<ptr>(ent.pawn + Offsets::RepairableComponentFirst);
+            ptr RepComp2 = ReadMemory<ptr>(ent.pawn + Offsets::RepairableComponentFirst + 0x8); //Reads RepCompSecond
+            ptr RepComp3 = ReadMemory<ptr>(ent.pawn + Offsets::RepairableComponentFirst + 0x10); //Reads RepCompThird
+
+            outShipMastsDamage.push_back(GetDamageLevel(RepComp1) + GetDamageLevel(RepComp2) + GetDamageLevel(RepComp3));
         } else if (ent.name.find("BP_Cannon_ShipPartMMC_") != std::string::npos) {
             outCannonLocation.push_back(ent.location);
         } else if (ent.name.find("hipWheel_C") != std::string::npos) {
             outShipWheel = ent.location;
+            ptr RepairableComponentWest = ReadMemory<ptr>(ent.pawn + Offsets::RepairableComponentWest);
+            ptr RepairableComponentSouth = ReadMemory<ptr>(ent.pawn + Offsets::RepairableComponentWest + 0x8); //adding 0x8 actually reads South
+            ptr RepairableComponentEast = ReadMemory<ptr>(ent.pawn + Offsets::RepairableComponentWest + 0x10); //adding 0x10 (= 0x8 * 2) reads East
+
+            outShipWheelDamage = GetDamageLevel(RepairableComponentWest) + GetDamageLevel(RepairableComponentSouth) + GetDamageLevel(RepairableComponentEast);
+        } else if (ent.name.find("apstan") != std::string::npos) {
+            outShipAnchor = ent.location;
+            TArray<ptr> Arms = ReadMemory<TArray<ptr>>(ent.pawn + Offsets::CapstanArms);
+            for (int j = 0; i < Arms.Length(); j++) {
+                ptr arm = ReadMemory<ptr>(Arms.GetAddress() + i * 0x8);
+                ptr armRepComp = ReadMemory<ptr>(arm + Offsets::RepairableComponent);
+                outShipAnchorDamage += GetDamageLevel(armRepComp);
+            }
         }
     }
     ptr hullDamage = ReadMemory<ptr>(ShipActor.pawn + Offsets::HullDamage);
@@ -502,3 +546,27 @@ void CannonAimbot::GetShipComponents(Entity ShipActor, std::vector<Entity> &Othe
         }
     }
 }
+
+
+
+// void CannonAimbot::GetShipComponentsDamageLevels(Entity ShipActor, std::vector<Entity> OtherEntities, int &wheelDamageLevel, std::vector<int> &mastsDamageLevel, int &anchorDamageLevel) {
+//     for (int i = 0; i < OtherEntities.size(); i++) {
+//         Entity &ent = OtherEntities[i];
+//         ptr EntityRootComponent  = ReadMemory<ptr>(ent.pawn + Offsets::RootComponent);
+//         FTransform EntityComponentToWorld = ReadMemory<FTransform>(EntityRootComponent + Offsets::ComponentToWorld);
+//         ent.location = EntityComponentToWorld.Translation;
+//         if ((ent.location - ShipActor.location).Size() > 4000.0f) continue;
+//         if (ent.name == "BP_SmallShip_Mast_C" || ent.name == "BP_large_mast_mizzen_C" || ent.name == "BP_large_mast_main_C" || ent.name == "BP_medium_mast_fore_C" || ent.name == "BP_medium_mast_main_C") {
+//         //TODO:Cant know what mast, need to be paired with GetShipComponents function
+//         } else if (ent.name.find("hipWheel_C") != std::string::npos) {
+//             uintptr_t RepairableComponentWest = ReadMemory<ptr>(ent.pawn + Offsets::RepairableComponentWest);
+//             uintptr_t RepairableComponentSouth = ReadMemory<ptr>(ent.pawn + Offsets::RepairableComponentWest + 0x8); //adding 0x8 actually reads South
+//             uintptr_t RepairableComponentEast = ReadMemory<ptr>(ent.pawn + Offsets::RepairableComponentWest + 0x10); //adding 0x10 (= 0x8 * 2) reads East
+//
+//             wheelDamageLevel = GetDamageLevel(RepairableComponentWest) + GetDamageLevel(RepairableComponentSouth) + GetDamageLevel(RepairableComponentEast);
+//         } else if (ent.name.find("apstan") != std::string::npos) {
+//             // outShipAnchor = ent.location;
+//         }
+//         //TODO: ADD ANCHOR/TEST IT
+//     }
+// }

@@ -3,8 +3,12 @@
 #ifndef GAMESTRUCTS_H
 #define GAMESTRUCTS_H
 #include <cmath>
+#include <codecvt>
 #include <cstring>
 #include <cstdint>
+#include <locale>
+
+#include "memory/Memory.h"
 
 
 class FVector
