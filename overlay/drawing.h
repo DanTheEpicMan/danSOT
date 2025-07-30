@@ -21,7 +21,7 @@ namespace COLOR {
        inline constexpr Color BLUE    = 0x0000FFFF;
        inline constexpr Color WHITE   = 0xFFFFFFFF;
        inline constexpr Color BLACK   = 0x000000FF;
-       inline constexpr Color YELLOW  = 0xFFC49102; //0xFFFF00FF;
+       inline constexpr Color YELLOW  = 0xFFD700FF; //0xFFFF00FF;
        inline constexpr Color MAGENTA = 0xFF00FFFF;
        inline constexpr Color CYAN    = 0x00FFFFFF;
        inline constexpr Color ORANGE  = 0xFFA500FF;
