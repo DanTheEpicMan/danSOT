@@ -34,6 +34,9 @@ public:
     private:
     bool drawCrosshair = true;
     bool drawRadar = true; double radarScale = 400; //max dist
+    const float radarX = MonWidth / 2.f;
+    const float radarY = MonHeight / 2.f;
+    const float radarRadius = 150.f;
     bool drawLocalRadar = true;
     bool drawShipList = true;
     bool drawSinkInfo = true;

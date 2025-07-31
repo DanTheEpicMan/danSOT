@@ -56,7 +56,22 @@ private:
     // Deadzone
     float AIM_DEADZONE = 2.0f;          // Stop aiming when crosshair is this close (in pixels) to the target.
 
+    enum QuickSwapState {
+        QS_IDLE,
+        QS_WAITING_FOR_DELAY,
+        QS_PRESSING_X1,
+        QS_WAITING_BETWEEN_PRESSES,
+        QS_PRESSING_X2
+    };
+    QuickSwapState quickSwapState = QS_IDLE;
+    double quickSwapStateStartTime = 0.0;
+    double quickSwapInitialDelay = 0.0;
+    double quickSwapPressTime1 = 0.0;
+    double quickSwapPressTime2 = 0.0;
+    double quickSwapTimeBetween = 0.0;
+    bool quickSwapLmbWasPressed = false;
 
+    void HandleQuickSwap(InputManager *inpMngr);
 };
 
 

@@ -69,6 +69,18 @@ public:
      */
     bool isVirtualMouseInitialized() const;
 
+    /**
+     * @brief Simulates pressing a generic keyboard key.
+     * @param keyCode The code from <linux/input-event-codes.h> (e.g., KEY_X).
+     */
+    void pressKey(int keyCode);
+
+    /**
+     * @brief Simulates releasing a generic keyboard key.
+     * @param keyCode The code from <linux/input-event-codes.h> (e.g., KEY_X).
+     */
+    void releaseKey(int keyCode);
+
 
     // Disable copy/move semantics for this complex class
     InputManager(const InputManager&) = delete;

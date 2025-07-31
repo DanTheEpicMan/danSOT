@@ -14,6 +14,9 @@
 
 void SolveQuartic(const std::complex<float> coefficients[5], std::complex<float> roots[4]) {
     const std::complex<float> a = coefficients[4];
+    if (std::abs(a.real()) < 1e-6f) {
+        return;
+    }
     const std::complex<float> b = coefficients[3] / a;
     const std::complex<float> c = coefficients[2] / a;
     const std::complex<float> d = coefficients[1] / a;
@@ -74,9 +77,11 @@ int AimAtStaticTarget(const FVector& oTargetPos, float fProjectileSpeed, float f
 
 /**
  * @brief Calculates the launch angle(s) to hit a target moving with linear velocity.
+ * @param[out] outTimeOfFlight The calculated time of flight to the target.
+ * @param[out] outAimPosition The calculated world position of the intercept.
  * @return The number of solutions found (0, 1, or 2).
  */
-int AimAtMovingTarget(const FVector& oTargetPos, const FVector& oTargetVelocity, float fProjectileSpeed, float fProjectileGravityScalar, const FVector& oSourcePos, const FVector& oSourceVelocity, FRotator& oOutLow, FRotator& oOutHigh) {
+int AimAtMovingTarget(const FVector& oTargetPos, const FVector& oTargetVelocity, float fProjectileSpeed, float fProjectileGravityScalar, const FVector& oSourcePos, const FVector& oSourceVelocity, FRotator& oOutLow, FRotator& oOutHigh, float& outTimeOfFlight, FVector& outAimPosition) {
     const FVector v(oTargetVelocity - oSourceVelocity);
     const FVector g(0.f, 0.f, -981.f * fProjectileGravityScalar);
     const FVector p(oTargetPos - oSourcePos);
@@ -95,8 +100,15 @@ int AimAtMovingTarget(const FVector& oTargetPos, const FVector& oTargetVelocity,
         }
     }
     if (fBestRoot == std::numeric_limits<float>::max())
+    {
+        outTimeOfFlight = 0.f;
         return 0;
+    }
+
+    outTimeOfFlight = fBestRoot;
     const FVector oAimAt = oTargetPos + (v * fBestRoot);
+    outAimPosition = oAimAt; // Output the calculated intercept point
+
     return AimAtStaticTarget(oAimAt, fProjectileSpeed, fProjectileGravityScalar, oSourcePos, oOutLow, oOutHigh);
 }
 
@@ -143,89 +155,63 @@ namespace NewtonRaphson
 
 /**
  * @brief Calculates launch angle(s) to hit a turning target (ship).
- *        Models the target's motion as a circle and uses a numerical solver.
+ * @param[out] outTimeOfFlight The calculated time of flight to the target.
+ * @param[out] outAimPosition The calculated world position of the intercept.
  * @return The number of solutions found (0, 1, or 2).
  */
-int CannonAimbot::AimAtShip(const FVector& oTargetPos, const FVector& oTargetVelocity, const FVector& oTargetAngularVelocity, const FVector& oSourcePos, const FVector& oSourceVelocity, float fProjectileSpeed, float fProjectileGravityScalar, FRotator& oOutLow, FRotator& oOutHigh)
+int CannonAimbot::AimAtShip(const FVector& oTargetPos, const FVector& oTargetVelocity, const FVector& oTargetAngularVelocity, const FVector& oSourcePos, const FVector& oSourceVelocity, float fProjectileSpeed, float fProjectileGravityScalar, FRotator& oOutLow, FRotator& oOutHigh, float& outTimeOfFlight, FVector& outAimPosition)
 {
     const float w = oTargetAngularVelocity.z;
 
     // If turn rate is negligible, use the simpler linear model.
     if (std::abs(w) < 0.5f) {
-        return AimAtMovingTarget(oTargetPos, oTargetVelocity, fProjectileSpeed, fProjectileGravityScalar, oSourcePos, oSourceVelocity, oOutLow, oOutHigh);
+        return AimAtMovingTarget(oTargetPos, oTargetVelocity, fProjectileSpeed, fProjectileGravityScalar, oSourcePos, oSourceVelocity, oOutLow, oOutHigh, outTimeOfFlight, outAimPosition);
     }
 
     const FVector rel_vel = oTargetVelocity - oSourceVelocity;
-
     const float w_rad = w * (M_PI / 180.f);
-
     const float v_target_boat = FVector(rel_vel.x, rel_vel.y, 0.0f).Size();
-    if (std::abs(w_rad) < 1e-5f) return 0; // Avoid division by zero, invalid turn
+    if (std::abs(w_rad) < 1e-5f) return 0;
 
-    // Turn radius r = v / ω
     const float r = v_target_boat / std::abs(w_rad);
 
-    // FIX #2: Robust calculation of turn center using perpendicular vectors
     FVector to_center_dir(0.f, 0.f, 0.f);
-    if (w_rad > 0.f) { // Turning left (CCW)
+    if (w_rad > 0.f) {
         to_center_dir = FVector(-rel_vel.y, rel_vel.x, 0.f).unit();
-    } else { // Turning right (CW)
+    } else {
         to_center_dir = FVector(rel_vel.y, -rel_vel.x, 0.f).unit();
     }
 
     const FVector center_of_turn = oTargetPos + (to_center_dir * r);
-
-    // This is the angle of the vector from the turn center to the ship's current position.
-    // It's the ship's initial phase angle in its circular path.
     const float theta_rad = atan2f(oTargetPos.y - center_of_turn.y, oTargetPos.x - center_of_turn.x);
-
-    // ---- The rest of the logic uses these corrected values ----
-
-    const FVector diff(oTargetPos - oSourcePos);
-
-    // K, L, M are the components of the vector from the cannon to the center of the turn.
     const FVector source_to_center = center_of_turn - oSourcePos;
     const float K = source_to_center.x;
     const float L = source_to_center.y;
     const float M = source_to_center.z;
     const float N = (981.f * fProjectileGravityScalar) / 2.f;
     const float S2 = fProjectileSpeed * fProjectileSpeed;
-
-    const FVector oDiffXY(diff.x, diff.y, 0.0f);
+    const FVector oDiffXY(oTargetPos - oSourcePos);
     const float fGroundDist = oDiffXY.Size();
 
-    float t_init = 0.f;
-    if (fProjectileSpeed > 1.f) { // Avoid division by zero
-        // Initial guess is based on the simple formula: time = distance / speed
-        t_init = fGroundDist / fProjectileSpeed;
-    } else {
-        // Fallback for an invalid projectile speed
-        t_init = 5.f;
-    }
-    // Clamp the initial guess to a reasonable range to improve stability
+    float t_init = fGroundDist > 1.f ? fGroundDist / fProjectileSpeed : 5.f;
     t_init = std::max(0.1f, std::min(20.f, t_init));
 
     float t_best = NewtonRaphson::solve(t_init, K, L, M, N, r, w_rad, theta_rad, S2);
 
     if (t_best < 0.f) {
-        return 0; // No valid future intercept found
+        outTimeOfFlight = 0.f;
+        return 0;
     }
 
-    // --- DEBUG DRAWING ---
-    // Your drawing code for the center was almost correct, but use the new `center_of_turn` vector.
-    Coords centerCoords = WorldToScreen(center_of_turn, this->CamInfo, MonWidth, MonHeight);
-    drawX(this->draw, centerCoords, 5, COLOR::YELLOW); // Draw Center
+    outTimeOfFlight = t_best; // Output the time of flight
 
-    // Calculate the future intercept point
     const float future_angle = theta_rad + (w_rad * t_best);
     const float At = center_of_turn.x + r * cosf(future_angle);
     const float Bt = center_of_turn.y + r * sinf(future_angle);
     const FVector oAimAt = FVector(At, Bt, oTargetPos.z);
 
-    Coords coords = WorldToScreen(oAimAt, this->CamInfo, MonWidth, MonHeight);
-    drawX(this->draw, coords, 5, COLOR::ORANGE); // Draw Intercept Point
+    outAimPosition = oAimAt; // Output the calculated intercept point
 
-    // Now solve as a static target problem
     return AimAtStaticTarget(oAimAt, fProjectileSpeed, fProjectileGravityScalar, oSourcePos, oOutLow, oOutHigh);
 }
 
@@ -269,50 +255,24 @@ FVector PredictComponentFuturePosition( const FVector& shipCenterFuturePos, cons
 
 void CannonAimbot::AimAndDrawShipComponents(const Entity& ship, const FVector& shipLinearVel, const FVector& shipAngularVel,
     const FRotator& shipInitialRotation, const FVector& oSourcePos, const FVector& oSourceVelocity,
-    float fProjectileSpeed, float fProjectileGravityScalar, const std::vector<Entity>& OtherEntities, const std::vector<Entity>& Enemies)
+    float fProjectileSpeed, float fProjectileGravityScalar, const std::vector<Entity>& OtherEntities, const std::vector<Entity>& Enemies,
+    const FVector& shipCenterFuturePos, float timeOfFlight)
 {
-    // Use the quartic solver to find the time of flight to the moving ship's center.
-    // This gives us the baseline time `t` needed to predict the ship's future state.
-    std::complex<float> pOutRoots[4];
-    const FVector v(shipLinearVel - oSourceVelocity);
-    const FVector g(0.f, 0.f, -981.f * fProjectileGravityScalar);
-    const FVector p(ship.location - oSourcePos);
-    const float c4 = (g | g) * 0.25f;
-    const float c3 = v | g;
-    const float c2 = (p | g) + (v | v) - (fProjectileSpeed * fProjectileSpeed);
-    const float c1 = 2.f * (p | v);
-    const float c0 = p | p;
-    const std::complex<float> pInCoeffs[5] = { c0, c1, c2, c3, c4 };
-    SolveQuartic(pInCoeffs, pOutRoots);
+    if (timeOfFlight <= 0.f) return;
 
-    float timeOfFlight = std::numeric_limits<float>::max();
-    bool validTimeFound = false;
-    for (int i = 0; i < 4; i++) {
-        if (pOutRoots[i].real() > 0.f && std::abs(pOutRoots[i].imag()) < 0.0001f) {
-            timeOfFlight = std::min(timeOfFlight, pOutRoots[i].real());
-            validTimeFound = true;
-        }
-    }
-
-    if (!validTimeFound) return; // Cannot predict without a valid time of flight.
-
-    // Calculate the future position of the ship's center.
-    FVector shipCenterFuturePos = ship.location + (shipLinearVel * timeOfFlight);
-
-    // Get all the component locations from the game world.
     std::vector<FVector> activeHoles, inactiveHoles, masts, cannons;
     FVector wheelLocation, anchorLocation;
     int wheelDamage, anchorDamage;
     std::vector<int> mastsDamage;
     GetShipComponents(ship, const_cast<std::vector<Entity>&>(OtherEntities), activeHoles, inactiveHoles, masts, mastsDamage, cannons, wheelLocation, wheelDamage, anchorLocation, anchorDamage);
 
-    // Lambda function to handle the logic for aiming and drawing a single point.
     auto aimPoint = [&](const FVector& initialPos) {
+        // We now use the accurate, pre-calculated values passed into this function.
         FVector futurePos = PredictComponentFuturePosition(shipCenterFuturePos, shipInitialRotation, shipAngularVel, timeOfFlight, initialPos, ship.location);
         FRotator solLow, solHigh;
         if (AimAtStaticTarget(futurePos, fProjectileSpeed, fProjectileGravityScalar, oSourcePos, solLow, solHigh) > 0) {
             FVector aimDir = RotatorToVector(solLow);
-            FVector aimWorldPos = this->CamInfo.Location + (aimDir * 10000.f); // Project point far out for screen calculation
+            FVector aimWorldPos = this->CamInfo.Location + (aimDir * 10000.f);
             Coords screenPos = WorldToScreen(aimWorldPos, this->CamInfo, MonWidth, MonHeight);
             if (screenPos.x > 0 && screenPos.y > 0) {
                 return screenPos;
@@ -354,14 +314,14 @@ void CannonAimbot::AimAndDrawShipComponents(const Entity& ship, const FVector& s
         offsetWheelLocation.z += this->cannonANDWheelANDAnchorOffset; // Apply vertical shift for wheel
         Coords wheelPos = aimPoint(offsetWheelLocation);
         this->draw->draw_text(wheelPos.x, wheelPos.y, "[W]", COLOR::YELLOW);
-        this->draw->draw_text(wheelPos.x, wheelPos.y + 50, std::to_string(wheelDamage)+"/3", COLOR::YELLOW);
+        this->draw->draw_text(wheelPos.x, wheelPos.y - 50, std::to_string(wheelDamage)+"/3", COLOR::YELLOW);
     }
     if (anchorLocation.Size() > 0) {
         FVector offsetAnchorLocation = anchorLocation;
         offsetAnchorLocation.z += this->cannonANDWheelANDAnchorOffset;
         Coords anchorPos = aimPoint(offsetAnchorLocation);
         this->draw->draw_text(anchorPos.x, anchorPos.y, "[A]", COLOR::YELLOW);
-        this->draw->draw_text(anchorPos.x, anchorPos.y + 50, std::to_string(anchorDamage)+"/3", COLOR::YELLOW);
+        this->draw->draw_text(anchorPos.x, anchorPos.y - 50, std::to_string(anchorDamage)+"/3", COLOR::YELLOW);
     }
 
     //Apply for players, does not account for player velocity (would be very inaccurate)
@@ -394,7 +354,7 @@ void CannonAimbot::AimAndDrawShipComponents(const Entity& ship, const FVector& s
 
             if (screenBase.x > 0 && screenBase.y > 0 && screenTop.x > 0 && screenTop.y > 0) {
                 this->draw->draw_line(screenBase.x, screenBase.y, screenTop.x, screenTop.y, 2.0f, COLOR::WHITE);
-                this->draw->draw_text(screenTop.x, screenTop.y, std::to_string(mastsDamage[i])+"/3", COLOR::YELLOW);
+                this->draw->draw_text(screenTop.x, screenTop.y - 50, std::to_string(mastsDamage[i])+"/3", COLOR::YELLOW);
             }
         }
     }
@@ -435,7 +395,15 @@ void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerContro
         if (CameraCache.POV.Location.Distance(shipCoords) > 600 * 100) continue; //greater than 600m away
 
         FRotator oOutLow, oOutHigh;
-        int solutions = AimAtShip({shipCoords.x, shipCoords.y, static_cast<float>(shipCoords.z + this->centerShift)}, shipLinearVel, shipAngularVel, CameraCache.POV.Location, localPlayerVelocity, this->lastLoadedProjectileSpeed, this->lastLoadedProjectileGravityScale, oOutLow, oOutHigh);
+        float timeOfFlight = 0.f;          // Variable to store the time of flight
+        FVector centerAimPosition;         // Variable to store the future center position
+
+        int solutions = AimAtShip(
+            {shipCoords.x, shipCoords.y, static_cast<float>(shipCoords.z + this->centerShift)},
+            shipLinearVel, shipAngularVel, CameraCache.POV.Location, localPlayerVelocity,
+            this->lastLoadedProjectileSpeed, this->lastLoadedProjectileGravityScale,
+            oOutLow, oOutHigh, timeOfFlight, centerAimPosition // Capture the new output values
+        );
 
         if (solutions > 0)
         {
@@ -448,11 +416,17 @@ void CannonAimbot::Run(uintptr_t GNames, uintptr_t LPawn, uintptr_t playerContro
             if (screenPosition.x > 0 && screenPosition.y > 0)
             {
                 drawX(this->draw, screenPosition, 10, COLOR::CYAN);
+                this->draw->draw_text(screenPosition.x, screenPosition.y - 150, std::to_string((int)((shipCoords.z - this->waterLevelAverageZ)/10)), COLOR::CYAN);
             }
         }
 
-        AimAndDrawShipComponents(ship, shipLinearVel, shipAngularVel, shipInitialRotation, CameraCache.POV.Location,
-            localPlayerVelocity, this->lastLoadedProjectileSpeed, this->lastLoadedProjectileGravityScale, OtherEntities, Enemies);
+        // Pass the accurate, calculated values to the component drawing function
+        AimAndDrawShipComponents(
+            ship, shipLinearVel, shipAngularVel, shipInitialRotation, CameraCache.POV.Location,
+            localPlayerVelocity, this->lastLoadedProjectileSpeed, this->lastLoadedProjectileGravityScale,
+            OtherEntities, Enemies,
+            centerAimPosition, timeOfFlight // Use the values from AimAtShip
+        );
     }
 }
 

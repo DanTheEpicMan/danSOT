@@ -7,21 +7,10 @@
 #include <cfloat>
 #include <chrono>
 #include <linux/input-event-codes.h>
-
-//Local Headers
-// #include "utils/ProcessUtils.h"
-// #include "memory/Memory.h"
-// #include "utils/LocalStructs.h"
-// #include "offsets.h"
-// #include "utils/GameStructs.h"
-// #include "overlay/drawing.h" //overlay/shared_data.h imported by this
-// #include "utils/tables.h"
-// #include "hacks/Aimbot.h"
-// #include "hacks/InputManager.h"
-// #include "hacks/InputManager.h"
+#include <ctime>
 
 #include "aimbot/CannonAimbot.h"
- #include "aimbot/PlayerAimbot.h"
+#include "aimbot/PlayerAimbot.h"
 #include "esp/ESP.h"
 #include "IO/InputManager.h"
 #include "memory/Memory.h"
@@ -89,7 +78,7 @@ int main() {
     int loopIndex = 0;
     while (true) {
         loopIndex++;
-        std::cout << "LN: " << loopIndex << std::endl;
+        std::cout << "\nLN: " << loopIndex << std::endl;
 
         ptr UWorld = ReadMemory<ptr>(BaseAddress + Offsets::UWorld);
         ptr GameState = ReadMemory<ptr>(UWorld + Offsets::GameState);
@@ -119,14 +108,14 @@ int main() {
             //Get name
             ent.name = getNameFromPawn(ent.pawn, GNames);
 
-            //Get Location
-            auto ActorRootComponent = ReadMemory<uintptr_t>(entPawn + Offsets::RootComponent);
-            if (ActorRootComponent == 0x0) continue;
-            ent.location = ReadMemory<FVector>(ActorRootComponent + Offsets::RelativeLocation);
+            // std::cout << "Name: " << ent.name << std::endl;
 
-            ptr playerEntityRootComponent  = ReadMemory<ptr>(ent.pawn + Offsets::RootComponent);
-            FTransform playerEntityComponentToWorld = ReadMemory<FTransform>(playerEntityRootComponent + Offsets::ComponentToWorld);
-            ent.location = playerEntityComponentToWorld.Translation;
+            //Get Location
+
+            ptr EntityRootComponent  = ReadMemory<ptr>(ent.pawn + Offsets::RootComponent);
+            FTransform EntityComponentToWorld = ReadMemory<FTransform>(EntityRootComponent + Offsets::ComponentToWorld);
+            ent.location = EntityComponentToWorld.Translation;
+
 
             //TODO: ID buring blade in this.
             if (ent.name.find("ShipTemplate_C") != std::string::npos ||
@@ -156,18 +145,23 @@ int main() {
                 otherEntities.push_back(ent);
             }
         } //for i
+        // std::cout << "Compleated Loop" << std::endl;
 
         ctx->begin_frame();
         ctx->draw_text_uncentered(10, 15, "DanSOT", COLOR::WHITE);
+        // std::cout << "Started Frame" << std::endl;
 
         esp.Run(LPawn, PlayerController, EnemyPlayers, TeamPlayers, EnemyShips, otherEntities, ctx);
+        // std::cout << "Drew ESP" << std::endl;
         playerAimbot.Run(LPawn, PlayerController, EnemyPlayers, EnemyShips, ctx, &inputManager);
+        // std::cout << "did Player aim" << std::endl;
         cannonAimbot.Run(GNames, LPawn, PlayerController, EnemyShips, EnemyPlayers, otherEntities, ctx, &inputManager);
-
+        // std::cout << "did Cannon aim" << std::endl;
         //Redraw the crosshair over everything else
         esp.DrawCrosshair(10/*radius*/, ctx, COLOR::ORANGE);
-
+        // std::cout << "Drew corshair" << std::endl;
         ctx->end_frame();
+        // std::cout << "done" << std::endl;
     }//while true
 
     delete ctx;

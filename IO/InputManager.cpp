@@ -159,6 +159,7 @@ void InputManager::setupUinput() {
     ioctl(uinput_fd, UI_SET_EVBIT, EV_KEY);
     ioctl(uinput_fd, UI_SET_KEYBIT, BTN_LEFT);
     ioctl(uinput_fd, UI_SET_KEYBIT, BTN_RIGHT);
+    ioctl(uinput_fd, UI_SET_KEYBIT, KEY_X);
 
     struct uinput_user_dev uidev;
     memset(&uidev, 0, sizeof(uidev));
@@ -224,4 +225,14 @@ void InputManager::clickLeft() {
 
 bool InputManager::isVirtualMouseInitialized() const {
     return uinput_initialized;
+}
+
+void InputManager::pressKey(int keyCode) {
+    emitUinputEvent(EV_KEY, keyCode, 1); // 1 = press
+    emitUinputEvent(EV_SYN, SYN_REPORT, 0);
+}
+
+void InputManager::releaseKey(int keyCode) {
+    emitUinputEvent(EV_KEY, keyCode, 0); // 0 = release
+    emitUinputEvent(EV_SYN, SYN_REPORT, 0);
 }

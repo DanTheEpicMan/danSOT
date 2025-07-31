@@ -19,12 +19,12 @@
  * @return The corresponding display name if a match is found, otherwise an empty string.
  */
 inline std::string getDisplayName(const std::string& internalName, std::span<const std::pair<std::string, std::string>> nameTable) {
-    for (const auto& entry : nameTable) {
-        // Check if the core name (entry.second) is a substring of the full internalName from the game.
-        if (internalName.find(entry.second) != std::string::npos) {
-            return entry.first; // Found a match, return the display name.
-        }
-    }
+    // for (const auto& entry : nameTable) {
+    //     // Check if the core name (entry.second) is a substring of the full internalName from the game.
+    //     if (internalName.find(entry.second) != std::string::npos) {
+    //         return entry.first; // Found a match, return the display name.
+    //     }
+    // }
 
     // If the loop completes without finding a match, return an empty string.
     return "";

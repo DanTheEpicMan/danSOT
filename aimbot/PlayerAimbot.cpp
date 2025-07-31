@@ -216,6 +216,7 @@ void PlayerAimbot::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<
         } // if aimbot or aim and shoot key pressed
     }
     HandleAutoShoot(conditionsMetForShooting, inpMngr);
+    // HandleQuickSwap(inpMngr);
 }
 
 bool PlayerAimbot::getPlayerAimToCoords(FVector LocalPlayerVelocityWithShip, FCameraCacheEntry CameraCache, float bulletSpeed, Entity Enemy, std::vector<Entity> ships, FVector &outAimingCoords, Coords &outCoords, float &targetWorldDistance, float gravityScale) {
@@ -260,4 +261,72 @@ void PlayerAimbot::HandleAutoShoot(bool shouldBeShooting, InputManager *inpMngr)
             this->mouseTimeDownRandom = rand() % 100 + 50; // 50-150ms hold
         }
     }
+}
+
+void PlayerAimbot::HandleQuickSwap(InputManager *inpMngr) {
+    double currentTime = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
+
+    bool aimbotKeyDown = inpMngr->isKeyDown(this->aimbotKeyCode); // KEY_2
+    bool lmbDown = inpMngr->isKeyDown(BTN_LEFT);
+
+    // If the aimbot key is released, cancel any ongoing quick swap sequence <-- THIS LOGIC IS BEING REMOVED
+    // if (!aimbotKeyDown && this->quickSwapState != QS_IDLE) {
+    //     this->quickSwapState = QS_RESET;
+    // }
+
+    switch (this->quickSwapState) {
+        case QS_IDLE: {
+            // Trigger on the rising edge of LMB (when it's first pressed) while KEY_2 is held
+            if (aimbotKeyDown && lmbDown && !this->quickSwapLmbWasPressed) {
+                // Initialize random timings for this specific sequence to make it feel realistic
+                this->quickSwapInitialDelay = (rand() % 41) + 80;  // 80-120 ms initial delay
+                this->quickSwapPressTime1 = (rand() % 31) + 50;    // 50-80 ms key hold time
+                this->quickSwapTimeBetween = (rand() % 41) + 60;   // 60-100 ms delay between presses
+                this->quickSwapPressTime2 = (rand() % 31) + 50;    // 50-80 ms key hold time for the second press
+
+                this->quickSwapState = QS_WAITING_FOR_DELAY;
+                this->quickSwapStateStartTime = currentTime;
+            }
+            break;
+        }
+
+        case QS_WAITING_FOR_DELAY: {
+            if (currentTime - this->quickSwapStateStartTime >= this->quickSwapInitialDelay) {
+                inpMngr->pressKey(KEY_X);
+                this->quickSwapState = QS_PRESSING_X1;
+                this->quickSwapStateStartTime = currentTime;
+            }
+            break;
+        }
+
+        case QS_PRESSING_X1: {
+            if (currentTime - this->quickSwapStateStartTime >= this->quickSwapPressTime1) {
+                inpMngr->releaseKey(KEY_X);
+                this->quickSwapState = QS_WAITING_BETWEEN_PRESSES;
+                this->quickSwapStateStartTime = currentTime;
+            }
+            break;
+        }
+
+        case QS_WAITING_BETWEEN_PRESSES: {
+            if (currentTime - this->quickSwapStateStartTime >= this->quickSwapTimeBetween) {
+                inpMngr->pressKey(KEY_X);
+                this->quickSwapState = QS_PRESSING_X2;
+                this->quickSwapStateStartTime = currentTime;
+            }
+            break;
+        }
+
+        case QS_PRESSING_X2: {
+            if (currentTime - this->quickSwapStateStartTime >= this->quickSwapPressTime2) {
+                inpMngr->releaseKey(KEY_X);
+                this->quickSwapState = QS_IDLE; // Sequence complete
+            }
+            break;
+        }
+
+    }
+
+    // Update the LMB state for the next frame's rising edge detection.
+    this->quickSwapLmbWasPressed = lmbDown;
 }

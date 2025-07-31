@@ -11,17 +11,18 @@ void ESP::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> E
     this->ScrWidth = MonWidth, this->ScrHeight = MonHeight;
     this->draw = ctx;
 
+    // std::cout << "ESP: Start" << std::endl;
     ptr CameraManager = ReadMemory<ptr>(playerController + Offsets::PlayerCameraManager);
     FCameraCacheEntry CameraCache = ReadMemory<FCameraCacheEntry>(CameraManager + Offsets::CameraCachePrivate);
-
+    // std::cout << "ESP: CameraManager" << std::endl;
     DrawCrosshair(10/*radius*/, ctx, COLOR::ORANGE);
-
+    // std::cout << "ESP: Drew Crosshair" << std::endl;
     DrawEnemies(EnemyPlayers, CameraCache.POV, COLOR::ORANGE, COLOR::RED);
-
+    // std::cout << "ESP: Drew Enemies" << std::endl;
     DrawTeam(TeamPlayers, CameraCache.POV, COLOR::BLUE);
-
+    // std::cout << "ESP: Drew Team" << std::endl;
     DrawShip(EnemyShips, otherEntities, CameraCache.POV, COLOR::YELLOW);
-
+    // std::cout << "ESP: Drew Ship" << std::endl;
 
 
 
@@ -33,7 +34,7 @@ void ESP::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> E
             Entity &entity = otherEntities[i];
             std::string itemName = "";
             std::string distanceString = " - " + std::to_string((int)(CameraCache.POV.Location.Distance(entity.location) / 100.f /*m*/)) + "m";
-            if (entity.location.z == 0) continue;
+            if (entity.location.x == 0) continue;
 
             itemName = getDisplayName(entity.name, Tables::enemyEntity);
             if (this->drawAIEnemies && !itemName.empty()) {
@@ -47,9 +48,10 @@ void ESP::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> E
                 ctx->draw_text(screenCoordsHead.x, screenCoordsHead.y + 10, itemName, COLOR::GREEN);
                 continue;
             }
-            itemName = getDisplayName(entity.name, Tables::projectiles);
-            if (this->drawProjectiles && !itemName.empty()) {
+            // itemName = getDisplayName(entity.name, Tables::projectiles);
+            if (this->drawProjectiles && entity.name.find("_Projectile_") != std::string::npos) {
                 // if (itemName.find("ball") != std::string::npos)
+
                 this->CannonBalls.push_back(entity.location);
 
                 Coords screenCoordsFeet = WorldToScreen({entity.location.x, entity.location.y, entity.location.z - 20.0f}, CameraCache.POV, MonWidth, MonHeight);
@@ -139,15 +141,11 @@ void ESP::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> E
             }
         } //for otherEntities
     } // if otherEntities
+    // std::cout << "ESP: Other entities esp" << std::endl;
 
     if (this->drawRadar) {
-        const float radarX = MonWidth / 2.f;
-        const float radarY = 170.f;
-        const float radarRadius = 150.f;
-
         ctx->draw_line(radarX, radarY - radarRadius, radarX, radarY + radarRadius, 1.0f, COLOR::TransparentLightWhite);
         ctx->draw_line(radarX - radarRadius, radarY, radarX + radarRadius, radarY, 1.0f, COLOR::TransparentLightWhite);
-        ctx->draw_text(radarX, radarY - radarRadius - 15, "N", COLOR::WHITE);
 
         const float playerYawRad = CameraCache.POV.Rotation.y * (M_PI / 180.f);
         const float cosYaw = cosf(playerYawRad);
@@ -180,7 +178,7 @@ void ESP::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> E
 
         for (const auto& cannonBallPos: CannonBalls) {
             if (cannonBallPos.z < 100) continue; //skip when below water
-            plot_on_radar(cannonBallPos, COLOR::ORANGE, 4.f);
+            plot_on_radar(cannonBallPos, COLOR::ORANGE, 7.f);
         }
 
         for (const auto& shipsHole: ShipsHolesPos) {
@@ -196,10 +194,8 @@ void ESP::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> E
         for (const auto& player : TeamPlayers) {
             plot_on_radar(player.location, COLOR::CYAN, 4.f);
         }
-
-
-
     }
+    // std::cout << "ESP: Draw Radar" << std::endl;
 
     if (this->drawLocalRadar) {
         float cursorY = 150.f;
@@ -262,8 +258,8 @@ void ESP::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> E
                     plot_on_local_radar(player.location, shipPos, radX, radarTopY, COLOR::CYAN, 5.f);
                 }
                 for (const auto& cannonBall: this->CannonBalls) {
-                    if (cannonBall.z < -100) continue;
-                    plot_on_local_radar(cannonBall, shipPos, radX, radarTopY, COLOR::ORANGE, 3.f);
+                    if (cannonBall.z < 100) continue;
+                    plot_on_local_radar(cannonBall, shipPos, radX, radarTopY, COLOR::ORANGE, 7.f);
                 }
 
                 cursorY = radarTopY + localRadarSize + radarPadding;
@@ -274,11 +270,12 @@ void ESP::Run(uintptr_t LPawn, uintptr_t playerController, std::vector<Entity> E
             }//else
         }//for ship
     }// if drawLocalRadar
+    // std::cout << "ESP: Local Radar" << std::endl;
 }
 
 void ESP::DrawPredictedShipMovement(const FVector& currentPos, FVector& linearVel, const FVector& angularVel, float predictionSeconds, const COLOR::Color pathColor, DrawingContext* ctx, const FMinimalViewInfo& CameraInfo, int MonWidth, int MonHeight)
 {
-    return;
+    // return;
     if (predictionSeconds <= 0.f || !ctx) return;
     linearVel.z = 0;
 
@@ -444,7 +441,10 @@ std::string ESP::DrawHolesAndUpdateName(uintptr_t shipAddr, FMinimalViewInfo Cam
     ptr hullDamage = ReadMemory<ptr>(shipAddr + Offsets::HullDamage);
     TArray<ptr> DamageZones = ReadMemory<TArray<ptr>>(hullDamage + Offsets::ActiveHullDamageZones);
     if (this->drawHoles) {
-        for (int j = 0; j < DamageZones.Length(); j++) {
+        int DZLength = DamageZones.Length();
+        if (DZLength > 50) return shipName;
+        std::cout << "Length Active: " << DZLength << std::endl;
+        for (int j = 0; j < DZLength; j++) {
             uintptr_t DamageZone = ReadMemory<ptr>(DamageZones.GetAddress() + (j * sizeof(uintptr_t)));
             ptr ShipSceneComponent = ReadMemory<ptr>(DamageZone + Offsets::SceneRootComponent);
             FVector location = ReadMemory<FVector>(ShipSceneComponent + Offsets::ActorCoordinates);
@@ -452,7 +452,10 @@ std::string ESP::DrawHolesAndUpdateName(uintptr_t shipAddr, FMinimalViewInfo Cam
         }
 
         TArray<ptr> DamageZonesAllHoles = ReadMemory<TArray<ptr>>(hullDamage + Offsets::DamageZones);
-        for (int j = 0; j < DamageZonesAllHoles.Length(); j++) {
+        int DZLengthAll = DamageZonesAllHoles.Length();
+        std::cout << "Length Inactive: " << DZLengthAll << std::endl;
+        if (DZLengthAll > 50 || DZLength < 0) return shipName;
+        for (int j = 0; j < DZLengthAll; j++) {
             uintptr_t DamageZone = ReadMemory<ptr>(DamageZonesAllHoles.GetAddress() + (j * sizeof(uintptr_t)));
             ptr ShipSceneComponent = ReadMemory<ptr>(DamageZone + Offsets::SceneRootComponent);
             FVector location = ReadMemory<FVector>(ShipSceneComponent + Offsets::ActorCoordinates);
@@ -487,17 +490,19 @@ void ESP::DrawShip(std::vector<Entity> ShipList, std::vector<Entity> OtherEntiti
         if (this->drawShipDist) {
             shipDisplayName += " " + std::to_string(distance) + "m";
         }
+        if (distance < 1500 * 100) {
+            std::cout << "ESP:DRAWSHIP: Start" << std::endl;
+            shipDisplayName = DrawHolesAndUpdateName(entity.pawn, CamPOV, shipDisplayName, OtherEntities);
+            std::cout << "ESP:DRAWSHIP: End func" << std::endl;
+            if (this->drawShipFloodCount) {
+                uintptr_t pShipInternalWaterComponent = ReadMemory<uintptr_t>(entity.pawn + Offsets::ShipInternalWaterComponent);
+                uintptr_t pShipInternalWaterActor = ReadMemory<uintptr_t>(pShipInternalWaterComponent + Offsets::ChildActor);
+                float waterAmount = ReadMemory<float>(pShipInternalWaterActor + Offsets::WaterAmount);
+                float maxWaterAmount = ReadMemory<float>(pShipInternalWaterActor + Offsets::InternalWaterParams + Offsets::MaxWaterAmount);
 
-        shipDisplayName = DrawHolesAndUpdateName(entity.pawn, CamPOV, shipDisplayName, OtherEntities);
-
-        if (this->drawShipFloodCount) {
-            uintptr_t pShipInternalWaterComponent = ReadMemory<uintptr_t>(entity.pawn + Offsets::ShipInternalWaterComponent);
-            uintptr_t pShipInternalWaterActor = ReadMemory<uintptr_t>(pShipInternalWaterComponent + Offsets::ChildActor);
-            float waterAmount = ReadMemory<float>(pShipInternalWaterActor + Offsets::WaterAmount);
-            float maxWaterAmount = ReadMemory<float>(pShipInternalWaterActor + Offsets::InternalWaterParams + Offsets::MaxWaterAmount);
-
-            if (maxWaterAmount > 0.f) {
-                shipDisplayName += " " + std::to_string((int)(waterAmount / maxWaterAmount * 100)) + "%";
+                if (maxWaterAmount > 0.f) {
+                    shipDisplayName += " " + std::to_string((int)(waterAmount / maxWaterAmount * 100)) + "%";
+                }
             }
         }
 
